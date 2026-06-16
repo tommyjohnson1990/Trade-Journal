@@ -1,0 +1,4369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#161b22">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trade Journal">
+<title>My Trade Journal</title>
+<link rel="manifest" href="/manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<!-- Password Gate — runs before anything else -->
+<script>
+(function() {
+  const PASS_KEY = 'tj_authenticated';
+  const PASS_HASH = 'CHANGE_ME'; // Will be replaced by setup script
+
+  function hashPassword(str) {
+    // Simple hash for localStorage check (not cryptographic — just obscures plain text)
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+    }
+    return h.toString(36);
+  }
+
+  // First-time setup: if no password is saved yet, prompt to create one
+  const savedHash = localStorage.getItem('tj_pass_hash');
+  const isAuthed  = sessionStorage.getItem(PASS_KEY);
+
+  if (!savedHash) {
+    // No password set yet — show setup screen after page loads
+    window.__TJ_SETUP_PASS = true;
+    return;
+  }
+
+  if (isAuthed === '1') return; // Already authenticated this session
+
+  // Show password screen
+  document.addEventListener('DOMContentLoaded', function() {
+    const overlay = document.createElement('div');
+    overlay.id = 'pass-gate';
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:99999;
+      background:#0d1117;
+      display:flex;align-items:center;justify-content:center;
+      font-family:'Inter',sans-serif;
+    `;
+    overlay.innerHTML = `
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:16px;padding:40px;width:360px;max-width:90vw;text-align:center;">
+        <div style="width:52px;height:52px;background:linear-gradient(135deg,#58a6ff,#1f6feb);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+          <svg width="24" height="24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </div>
+        <div style="font-size:20px;font-weight:800;color:#e6edf3;margin-bottom:6px;">Trading Journal Pro</div>
+        <div style="font-size:13px;color:#8b949e;margin-bottom:28px;">Enter your password to continue</div>
+        <input type="password" id="pass-input" placeholder="Password"
+          style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:15px;padding:12px 16px;outline:none;font-family:inherit;margin-bottom:12px;text-align:center;letter-spacing:2px;"
+          onkeydown="if(event.key==='Enter')checkPass()">
+        <button onclick="checkPass()"
+          style="width:100%;background:#58a6ff;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;padding:12px;cursor:pointer;font-family:inherit;">
+          Unlock Journal
+        </button>
+        <div id="pass-error" style="color:#f85149;font-size:12px;margin-top:10px;display:none;">Incorrect password. Try again.</div>
+        <div style="margin-top:20px;font-size:11px;color:#6e7681;">Brisbane Time (AEST) · Private & Secure</div>
+      </div>`;
+    document.body.prepend(overlay);
+    setTimeout(() => document.getElementById('pass-input')?.focus(), 100);
+
+    window.checkPass = function() {
+      const val  = document.getElementById('pass-input').value;
+      const hash = hashPassword(val);
+      const saved = localStorage.getItem('tj_pass_hash');
+      if (hash === saved) {
+        sessionStorage.setItem(PASS_KEY, '1');
+        document.getElementById('pass-gate').remove();
+      } else {
+        const err = document.getElementById('pass-error');
+        err.style.display = 'block';
+        document.getElementById('pass-input').value = '';
+        document.getElementById('pass-input').focus();
+        setTimeout(() => { err.style.display = 'none'; }, 3000);
+      }
+    };
+  });
+})();
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --card2: #1c2128;
+    --border: #30363d;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #6e7681;
+    --sidebar-w: 220px;
+    --header-h: 56px;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; }
+  a { color: var(--blue); text-decoration: none; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Layout ── */
+  #app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: var(--sidebar-w);
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+    z-index: 100;
+  }
+  .sidebar-logo {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-logo .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--blue), #1f6feb);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .sidebar-logo .logo-icon svg { color: #fff; width: 18px; height: 18px; }
+  .sidebar-logo .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+  .sidebar-logo .logo-sub { font-size: 10px; color: var(--text3); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  .sidebar-section-label {
+    padding: 14px 16px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text3);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+
+  nav a.nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 0;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  nav a.nav-item:hover { color: var(--text); background: rgba(88,166,255,0.06); }
+  nav a.nav-item.active { color: var(--blue); background: rgba(88,166,255,0.1); border-left-color: var(--blue); }
+  nav a.nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  /* ── Main ── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  #topbar {
+    height: var(--header-h);
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .topbar-title { font-size: 16px; font-weight: 700; }
+  .topbar-date { font-size: 12px; color: var(--text2); }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+
+  #content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* ── Sections ── */
+  .section { display: none; animation: fadeIn 0.2s ease; }
+  .section.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Components ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title { font-size: 20px; font-weight: 700; }
+  .section-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title svg { width: 14px; height: 14px; color: var(--blue); }
+
+  /* Metric cards */
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .metric-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .metric-card.blue::before { background: var(--blue); }
+  .metric-card.green::before { background: var(--green); }
+  .metric-card.red::before { background: var(--red); }
+  .metric-card.yellow::before { background: var(--yellow); }
+  .metric-label { font-size: 11px; color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .metric-value { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+  .metric-value.green { color: var(--green); }
+  .metric-value.red { color: var(--red); }
+  .metric-value.blue { color: var(--blue); }
+  .metric-value.yellow { color: var(--yellow); }
+  .metric-delta { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 13px; font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--card2);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .btn:hover { background: #2d333b; border-color: #444c56; }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #79b8ff; border-color: #79b8ff; }
+  .btn-green { background: rgba(63,185,80,0.15); border-color: var(--green); color: var(--green); }
+  .btn-green:hover { background: rgba(63,185,80,0.25); }
+  .btn-red { background: rgba(248,81,73,0.15); border-color: var(--red); color: var(--red); }
+  .btn-danger:hover { background: rgba(248,81,73,0.25); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-icon { padding: 6px; border-radius: 6px; }
+
+  /* Form elements */
+  label { display: block; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 5px; }
+  input[type="text"], input[type="number"], input[type="date"], input[type="time"],
+  textarea, select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(88,166,255,0.1); }
+  textarea { resize: vertical; min-height: 80px; }
+  select option { background: #1c2128; }
+
+  .form-row { display: grid; gap: 12px; margin-bottom: 12px; }
+  .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+  .form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .form-row.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .form-group { display: flex; flex-direction: column; }
+
+  /* Custom checkbox */
+  .check-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0;
+    cursor: pointer;
+    user-select: none;
+  }
+  .check-item input[type="checkbox"] { display: none; }
+  .check-box {
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .check-item input:checked + .check-box {
+    background: var(--blue);
+    border-color: var(--blue);
+  }
+  .check-item input:checked + .check-box::after {
+    content: '';
+    display: block;
+    width: 10px; height: 6px;
+    border-left: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) translateY(-1px);
+  }
+  .check-label { font-size: 13px; color: var(--text); }
+  .check-item input:checked ~ .check-label { color: var(--text2); text-decoration: line-through; }
+
+  /* Score input */
+  .score-input-wrap { position: relative; }
+  .score-input-wrap input[type="number"] {
+    text-align: center;
+    font-weight: 700;
+    font-size: 16px;
+    padding: 10px;
+  }
+  .score-bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 4px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; }
+
+  /* Table */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .data-table input { padding: 5px 8px; font-size: 12px; }
+  .data-table select { padding: 5px 8px; font-size: 12px; }
+
+  /* Badge */
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
+  .badge-blue { background: rgba(88,166,255,0.15); color: var(--blue); }
+  .badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+
+  /* Progress bar */
+  .progress-wrap { margin: 8px 0; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); margin-bottom: 5px; }
+  .progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* Tag */
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(88,166,255,0.1);
+    color: var(--blue);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    margin: 2px;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: #238636;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 9999;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast svg { width: 16px; height: 16px; }
+
+  /* Trade cards */
+  .trade-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .trade-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .trade-card-num { font-size: 11px; color: var(--text3); font-weight: 600; }
+  .trade-card .remove-btn {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    padding: 2px; display: flex; align-items: center;
+    transition: color 0.15s;
+  }
+  .trade-card .remove-btn:hover { color: var(--red); }
+  .trade-card .remove-btn svg { width: 14px; height: 14px; }
+
+  /* Setup cards */
+  .setup-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .setup-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  /* Emotion grid */
+  .emotion-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .emotion-btn {
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text2);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .emotion-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .emotion-btn.selected { background: rgba(88,166,255,0.15); border-color: var(--blue); color: var(--blue); }
+  .emotion-btn.fear.selected { background: rgba(248,81,73,0.15); border-color: var(--red); color: var(--red); }
+  .emotion-btn.greed.selected { background: rgba(210,153,34,0.15); border-color: var(--yellow); color: var(--yellow); }
+  .emotion-btn.confident.selected { background: rgba(63,185,80,0.15); border-color: var(--green); color: var(--green); }
+
+  /* Drawdown meter */
+  .drawdown-meter {
+    position: relative;
+    height: 32px;
+    background: var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 10px 0;
+  }
+  .drawdown-fill {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.5s ease;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding-right: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .drawdown-ticks {
+    display: flex; justify-content: space-between;
+    font-size: 10px; color: var(--text3);
+    margin-top: 4px;
+    padding: 0 2px;
+  }
+
+  /* Grade matrix */
+  .grade-matrix { border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .grade-matrix table { width: 100%; border-collapse: collapse; }
+  .grade-matrix th { background: var(--card2); padding: 10px 14px; font-size: 11px; color: var(--text3); text-align: center; border-bottom: 1px solid var(--border); }
+  .grade-matrix td { padding: 8px 14px; text-align: center; border-bottom: 1px solid rgba(48,54,61,0.4); }
+  .grade-matrix tr:last-child td { border-bottom: none; }
+  .grade-cell { font-size: 13px; font-weight: 600; }
+
+  .grade-select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-family: inherit;
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Trigger map */
+  .trigger-item {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+
+  /* Two-col layout */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* AI insight box */
+  .ai-box {
+    background: linear-gradient(135deg, rgba(88,166,255,0.05), rgba(31,111,235,0.08));
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .ai-box-title { font-size: 13px; font-weight: 600; color: var(--blue); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .ai-box-title svg { width: 15px; height: 15px; }
+  .ai-prompt-output {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+    min-height: 80px;
+    font-family: 'Inter', monospace;
+    white-space: pre-wrap;
+    margin-bottom: 10px;
+  }
+
+  /* Weekly/Monthly heatmap-like grid */
+  .day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 14px; }
+  .day-cell {
+    aspect-ratio: 1;
+    border-radius: 4px;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600;
+    cursor: default;
+    transition: transform 0.1s;
+  }
+  .day-cell:hover { transform: scale(1.1); }
+  .day-cell.win { background: rgba(63,185,80,0.4); color: var(--green); }
+  .day-cell.loss { background: rgba(248,81,73,0.3); color: var(--red); }
+  .day-cell.be { background: rgba(88,166,255,0.2); color: var(--blue); }
+  .day-cell.off { background: var(--card2); color: var(--text3); }
+
+  /* Behavior tracker */
+  .behavior-row {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px 80px auto;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+  }
+  .behavior-row:last-child { border-bottom: none; }
+  .behavior-name { font-size: 13px; font-weight: 500; }
+  .behavior-score-cell { display: flex; align-items: center; justify-content: center; }
+
+  /* ── Bias Engine ── */
+  .bias-symbol-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+    margin-bottom: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .bias-symbol-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .bias-card-eurusd::before  { background: linear-gradient(90deg, #58a6ff, #1f6feb); }
+  .bias-card-xauusd::before  { background: linear-gradient(90deg, #d29922, #e3b341); }
+  .bias-card-nas100::before  { background: linear-gradient(90deg, #3fb950, #2ea043); }
+
+  .bias-card-header {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .bias-symbol-label {
+    font-size: 20px; font-weight: 800;
+    letter-spacing: -0.5px;
+    min-width: 110px;
+  }
+  .bias-symbol-sub { font-size: 11px; color: var(--text3); font-weight: 500; letter-spacing: 0.3px; }
+  .bias-overall-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: all 0.3s;
+  }
+  .bias-overall-pill.bull  { background: rgba(63,185,80,0.18);  color: var(--green); border: 1px solid rgba(63,185,80,0.4); }
+  .bias-overall-pill.bear  { background: rgba(248,81,73,0.15);  color: var(--red);   border: 1px solid rgba(248,81,73,0.4); }
+  .bias-overall-pill.neut  { background: rgba(210,153,34,0.15); color: var(--yellow);border: 1px solid rgba(210,153,34,0.4); }
+  .bias-overall-pill.idle  { background: rgba(139,148,158,0.1); color: var(--text3); border: 1px solid var(--border); }
+
+  .bias-price-wrap {
+    display: flex; align-items: center; gap: 6px;
+    margin-left: auto;
+  }
+  .bias-price-wrap label { margin: 0; white-space: nowrap; }
+  .bias-price-wrap input {
+    width: 130px;
+    font-size: 13px; font-weight: 600;
+    text-align: right;
+  }
+
+  /* Bias table */
+  .bias-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .bias-table { width: 100%; border-collapse: collapse; }
+  .bias-table th {
+    background: var(--card2);
+    padding: 9px 14px;
+    text-align: left;
+    font-size: 10px; font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .bias-table td {
+    padding: 13px 14px;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+    vertical-align: top;
+    font-size: 13px;
+  }
+  .bias-table tr:last-child td { border-bottom: none; }
+  .bias-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .bias-tf-label {
+    font-weight: 700; font-size: 13px;
+    white-space: nowrap;
+    color: var(--text2);
+  }
+  .bias-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .bias-badge.bull { background: rgba(63,185,80,0.15);  color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .bias-badge.bear { background: rgba(248,81,73,0.12);  color: var(--red);   border: 1px solid rgba(248,81,73,0.3); }
+  .bias-badge.neut { background: rgba(210,153,34,0.12); color: var(--yellow);border: 1px solid rgba(210,153,34,0.3); }
+  .bias-badge.idle { background: var(--card2); color: var(--text3); border: 1px solid var(--border); }
+
+  .conf-pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .conf-high   { background: rgba(63,185,80,0.12);  color: var(--green); }
+  .conf-medium { background: rgba(210,153,34,0.12); color: var(--yellow); }
+  .conf-low    { background: rgba(248,81,73,0.1);   color: var(--red); }
+
+  .bias-explanation {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.65;
+  }
+  .bias-key-level {
+    font-size: 11px;
+    color: var(--blue);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .bias-structure-tag {
+    display: inline-block;
+    background: rgba(88,166,255,0.1);
+    color: var(--blue);
+    border-radius: 4px;
+    font-size: 10px; font-weight: 600;
+    padding: 1px 6px;
+    margin-bottom: 4px;
+  }
+
+  /* Overall note */
+  .bias-overall-note {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-top: 4px;
+  }
+  .bias-overall-note-title {
+    font-size: 10px; font-weight: 700;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 5px;
+  }
+
+  /* Loading skeleton */
+  @keyframes shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position:  400px 0; }
+  }
+  .skel {
+    background: linear-gradient(90deg, var(--border) 25%, #2d333b 50%, var(--border) 75%);
+    background-size: 800px 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 4px;
+    height: 14px;
+    display: inline-block;
+  }
+  .skel-sm { width: 60px; }
+  .skel-md { width: 120px; }
+  .skel-lg { width: 100%; margin-top: 4px; }
+
+  /* API key card */
+  .api-key-card {
+    background: linear-gradient(135deg, rgba(88,166,255,0.05), rgba(31,111,235,0.07));
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .api-key-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .api-key-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 8px 12px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.05em;
+  }
+  .api-key-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(88,166,255,0.1); }
+
+  /* Bias alignment bar */
+  .alignment-meter {
+    display: flex; gap: 3px; align-items: center;
+    margin-top: 8px;
+  }
+  .alignment-seg {
+    flex: 1; height: 6px; border-radius: 3px;
+    background: var(--border);
+    transition: background 0.4s;
+  }
+  .alignment-seg.bull { background: var(--green); }
+  .alignment-seg.bear { background: var(--red); }
+  .alignment-seg.neut { background: var(--yellow); }
+
+  /* ── Brisbane Clock & Auto-run ── */
+  .brisbane-clock-wrap {
+    display: flex; flex-direction: column; align-items: flex-end;
+    background: rgba(63,185,80,0.07);
+    border: 1px solid rgba(63,185,80,0.2);
+    border-radius: 8px;
+    padding: 6px 12px;
+  }
+  .brisbane-clock-label { color: var(--text3); font-weight: 600; font-size: 9px; text-transform: uppercase; letter-spacing: 0.7px; }
+  .brisbane-clock-time  { color: var(--green); font-weight: 800; font-family: 'Courier New', monospace; font-size: 16px; line-height: 1.2; }
+  .brisbane-clock-date  { color: var(--text2); font-size: 10px; }
+
+  .auto-run-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(88,166,255,0.05);
+    border: 1px solid rgba(88,166,255,0.15);
+    border-radius: 8px;
+    padding: 9px 16px;
+    margin-bottom: 14px;
+    font-size: 12px; flex-wrap: wrap; gap: 8px;
+  }
+  .auto-run-left  { display: flex; align-items: center; gap: 10px; color: var(--text2); }
+  .auto-run-right { display: flex; align-items: center; gap: 10px; }
+  @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .auto-run-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0;
+  }
+  .auto-run-dot.on { background: var(--green); animation: blink-dot 2s infinite; }
+
+  /* Toggle switch */
+  .tog { position:relative; display:inline-flex; align-items:center; cursor:pointer; gap:6px; font-size:12px; color:var(--text2); }
+  .tog input { display:none; }
+  .tog-track {
+    width:36px; height:20px; border-radius:20px;
+    background: var(--border); transition: background 0.2s; flex-shrink:0; position:relative;
+  }
+  .tog-track::after {
+    content:''; position:absolute; top:3px; left:3px;
+    width:14px; height:14px; border-radius:50%;
+    background:#fff; transition:transform 0.2s;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .tog input:checked + .tog-track { background: var(--green); }
+  .tog input:checked + .tog-track::after { transform: translateX(16px); }
+
+  /* ── TradingView widgets ── */
+  .ticker-tape-wrap {
+    border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; margin-bottom: 16px;
+    background: var(--card2); min-height: 46px;
+  }
+  .tv-chart-container {
+    border-radius: 10px; overflow: hidden; margin-bottom: 14px;
+    border: 1px solid var(--border); background: var(--card2);
+    height: 200px; position: relative;
+  }
+  .tv-chart-loading {
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; color:var(--text3); gap:8px; pointer-events:none;
+  }
+  .live-dot {
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--green); margin-right:4px; animation:blink-dot 1.5s infinite;
+  }
+  .live-label { font-size:10px; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:0.4px; }
+  .fetch-price-btn { font-size:10px; padding:3px 8px; }
+
+  /* ── MT5 Import Modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(1,4,9,0.85);
+    z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    width: 860px;
+    max-width: 95vw;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(16px);
+    transition: transform 0.2s;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .modal-title { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .modal-title svg { color: var(--blue); width: 20px; height: 20px; }
+  .modal-body { flex: 1; overflow-y: auto; padding: 24px; }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+    background: var(--card2);
+  }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 20px;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--blue);
+    background: rgba(88,166,255,0.05);
+  }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-zone-icon { font-size: 32px; margin-bottom: 10px; }
+  .drop-zone-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .drop-zone-sub { font-size: 12px; color: var(--text2); }
+  .format-info {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    font-size: 12px;
+    color: var(--text2);
+    display: none;
+  }
+  .format-info.visible { display: block; }
+  .format-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(88,166,255,0.15); color: var(--blue);
+    border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .import-preview {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .import-preview.visible { display: block; }
+  .import-preview-header {
+    background: var(--card2);
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .import-preview-title { font-size: 13px; font-weight: 600; }
+  .import-preview-scroll { max-height: 320px; overflow-y: auto; }
+  .import-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .import-preview th {
+    background: var(--bg);
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    position: sticky; top: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .import-preview td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,0.4); }
+  .import-preview tr:last-child td { border-bottom: none; }
+  .import-preview tr:hover td { background: rgba(255,255,255,0.02); }
+  .import-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; display: none;
+  }
+  .import-stats.visible { display: grid; }
+  .import-stat {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+  }
+  .import-stat-val { font-size: 22px; font-weight: 800; }
+  .import-stat-lbl { font-size: 10px; color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; }
+  .import-row-skip { opacity: 0.45; }
+  .import-row-open { font-style: italic; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    :root { --sidebar-w: 56px; }
+    .nav-item span { display: none; }
+    .sidebar-logo .logo-text, .sidebar-logo .logo-sub { display: none; }
+    .sidebar-section-label { display: none; }
+    .metric-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .form-row.cols-4 { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <div id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><i data-lucide="trending-up"></i></div>
+      <div>
+        <div class="logo-text">TradeJournal</div>
+        <div class="logo-sub">Pro Edition</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section-label">Journal</div>
+    <nav>
+      <a class="nav-item active" data-section="daily" href="#">
+        <i data-lucide="book-open"></i><span>Daily Journal</span>
+      </a>
+      <a class="nav-item" data-section="weekly" href="#">
+        <i data-lucide="calendar-days"></i><span>Weekly Review</span>
+      </a>
+      <a class="nav-item" data-section="monthly" href="#">
+        <i data-lucide="calendar-range"></i><span>Monthly Review</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-section-label">Strategy</div>
+    <nav>
+      <a class="nav-item" data-section="playbook" href="#">
+        <i data-lucide="layers"></i><span>Setup Playbook</span>
+      </a>
+      <a class="nav-item" data-section="behavioral" href="#">
+        <i data-lucide="activity"></i><span>Behavioral Tracker</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-section-label">Risk & Edge</div>
+    <nav>
+      <a class="nav-item" data-section="risk" href="#">
+        <i data-lucide="shield-alert"></i><span>Risk Dashboard</span>
+      </a>
+      <a class="nav-item" data-section="emotions" href="#">
+        <i data-lucide="brain"></i><span>Emotional Triggers</span>
+      </a>
+      <a class="nav-item" data-section="checklist" href="#">
+        <i data-lucide="check-square"></i><span>Accountability</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-section-label">Market Analysis</div>
+    <nav>
+      <a class="nav-item" data-section="bias" href="#">
+        <i data-lucide="globe-2"></i><span>Bias Engine</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      v1.0 · Local Storage
+    </div>
+  </div>
+
+  <!-- ── Main ── -->
+  <div id="main">
+    <div id="topbar">
+      <div>
+        <div class="topbar-title" id="topbar-title">Daily Journal</div>
+        <div class="topbar-date" id="topbar-date"></div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-sm" onclick="saveAll()"><i data-lucide="save"></i> Save</button>
+        <button class="btn btn-sm" onclick="copySection()"><i data-lucide="clipboard-copy"></i> Copy Section</button>
+        <button class="btn btn-sm btn-primary" onclick="openMT5Modal()"><i data-lucide="upload"></i> Import MT5 CSV</button>
+      </div>
+    </div>
+
+    <div id="content">
+
+      <!-- ════════════════════════════════════
+           SECTION: DAILY JOURNAL
+      ════════════════════════════════════ -->
+      <div class="section active" id="sec-daily">
+        <!-- Stats Row -->
+        <div class="metric-grid">
+          <div class="metric-card blue">
+            <div class="metric-label">Net P&amp;L</div>
+            <div class="metric-value blue" id="stat-pnl">$0.00</div>
+            <div class="metric-delta">Today's result</div>
+          </div>
+          <div class="metric-card green">
+            <div class="metric-label">Win Rate</div>
+            <div class="metric-value green" id="stat-wr">0%</div>
+            <div class="metric-delta" id="stat-wr-sub">0W / 0L</div>
+          </div>
+          <div class="metric-card yellow">
+            <div class="metric-label">R-Multiple</div>
+            <div class="metric-value yellow" id="stat-r">0.00R</div>
+            <div class="metric-delta">Avg per trade</div>
+          </div>
+          <div class="metric-card red">
+            <div class="metric-label">Behavioral Score</div>
+            <div class="metric-value" id="stat-beh">—</div>
+            <div class="metric-delta">Process quality</div>
+          </div>
+        </div>
+
+        <!-- Pre-Market Plan -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="sunrise"></i> Pre-Market Plan</div>
+          <div class="form-row cols-3">
+            <div class="form-group">
+              <label>Date</label>
+              <input type="date" id="plan-date">
+            </div>
+            <div class="form-group">
+              <label>Market Session</label>
+              <select id="plan-session">
+                <option>Regular (9:30–16:00 ET)</option>
+                <option>Pre-Market</option>
+                <option>After-Hours</option>
+                <option>Futures</option>
+                <option>Forex Asian</option>
+                <option>Forex London</option>
+                <option>Forex NY</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Overall Market Bias</label>
+              <select id="plan-bias">
+                <option>Bullish</option>
+                <option>Bearish</option>
+                <option>Neutral / Range</option>
+                <option>Uncertain — No Bias</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Key Levels to Watch (S/R, VWAP, etc.)</label>
+              <textarea id="plan-levels" placeholder="e.g. SPY: 452 support, 456 resistance. VWAP at 453.20..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>Catalysts &amp; News</label>
+              <textarea id="plan-news" placeholder="e.g. FOMC minutes 2pm, AAPL earnings after close, CPI data..."></textarea>
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Watchlist / Setups Scanning For</label>
+              <textarea id="plan-watchlist" placeholder="e.g. TSLA — bull flag near 265, NVDA — ORB setup..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>Rules &amp; Intentions for Today</label>
+              <textarea id="plan-rules" placeholder="e.g. Max 3 trades. No chasing. Stop after -$200. Only A+ setups..."></textarea>
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Mental State Check-In</label>
+              <select id="plan-mental">
+                <option>🟢 Focused &amp; Ready</option>
+                <option>🟡 Slightly Distracted</option>
+                <option>🔴 Stressed / Anxious</option>
+                <option>⚪ Neutral</option>
+                <option>💤 Tired / Low Energy</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Sleep Quality (hours)</label>
+              <input type="number" id="plan-sleep" placeholder="7.5" min="0" max="12" step="0.5">
+            </div>
+          </div>
+        </div>
+
+        <!-- Trade Log -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="list-ordered"></i> Trade Log</div>
+          <div id="trade-log-container"></div>
+          <button class="btn btn-primary" onclick="addTrade()"><i data-lucide="plus"></i> Add Trade</button>
+        </div>
+
+        <!-- Psychology Check -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="heart-pulse"></i> Intraday Psychology Check</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Emotional State During Trading</label>
+              <div class="emotion-grid" id="emotion-grid">
+                <button class="emotion-btn confident" data-emotion="Confident" onclick="toggleEmotion(this)">😎 Confident</button>
+                <button class="emotion-btn" data-emotion="Calm" onclick="toggleEmotion(this)">🧘 Calm</button>
+                <button class="emotion-btn fear" data-emotion="Fear" onclick="toggleEmotion(this)">😨 Fear</button>
+                <button class="emotion-btn greed" data-emotion="Greed" onclick="toggleEmotion(this)">💰 Greed</button>
+                <button class="emotion-btn fear" data-emotion="Revenge" onclick="toggleEmotion(this)">😤 Revenge</button>
+                <button class="emotion-btn" data-emotion="FOMO" onclick="toggleEmotion(this)">🏃 FOMO</button>
+                <button class="emotion-btn greed" data-emotion="Overconfident" onclick="toggleEmotion(this)">🤑 Overconfident</button>
+                <button class="emotion-btn" data-emotion="Bored" onclick="toggleEmotion(this)">😑 Bored</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Did You Follow Your Rules?</label>
+              <select id="psych-rules">
+                <option>Yes — 100%</option>
+                <option>Mostly — minor deviations</option>
+                <option>Partially — broke some rules</option>
+                <option>No — significant rule breaks</option>
+              </select>
+              <br>
+              <label>Biggest Psychological Challenge Today</label>
+              <textarea id="psych-challenge" placeholder="e.g. Felt FOMO after missing first move, then overtraded..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Process Scorecard -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="clipboard-check"></i> Process Scorecard</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px;">Rate each process dimension 1–10. These scores drive your Behavioral Score metric.</p>
+          <div class="form-row cols-3" id="scorecard-grid">
+            <!-- injected by JS -->
+          </div>
+        </div>
+
+        <!-- Trade Grade Matrix -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="table-2"></i> Trade Grade Matrix</div>
+          <div class="grade-matrix">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Ticker</th>
+                  <th>Setup Quality</th>
+                  <th>Entry Execution</th>
+                  <th>Exit Execution</th>
+                  <th>Risk Management</th>
+                  <th>Mental State</th>
+                  <th>Overall Grade</th>
+                </tr>
+              </thead>
+              <tbody id="grade-matrix-body">
+                <tr>
+                  <td style="color:var(--text3);font-size:12px;" colspan="8">Add trades above to grade them here</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- End of Day Review -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="moon"></i> End-of-Day Review</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>What Went Well Today?</label>
+              <textarea id="eod-good" placeholder="e.g. Stuck to position sizing, waited patiently for setup confirmation..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>What Needs Improvement?</label>
+              <textarea id="eod-bad" placeholder="e.g. Moved stop too early, didn't let winner run past first target..."></textarea>
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Key Lesson / Insight</label>
+              <textarea id="eod-lesson" placeholder="e.g. When price consolidates tight after news, the breakout is powerful..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>Tomorrow's Adjustment</label>
+              <textarea id="eod-tomorrow" placeholder="e.g. Be more patient on entries, wait for the retest before pulling trigger..."></textarea>
+            </div>
+          </div>
+          <div class="form-row cols-3">
+            <div class="form-group">
+              <label>Overall Day Rating</label>
+              <select id="eod-rating">
+                <option>⭐⭐⭐⭐⭐ Excellent</option>
+                <option>⭐⭐⭐⭐ Good</option>
+                <option>⭐⭐⭐ Average</option>
+                <option>⭐⭐ Below Average</option>
+                <option>⭐ Poor</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Trades Taken vs Planned</label>
+              <input type="text" id="eod-trades-vs" placeholder="e.g. 3 taken / 2 planned">
+            </div>
+            <div class="form-group">
+              <label>Would You Trade the Same Tomorrow?</label>
+              <select id="eod-repeat">
+                <option>Yes — same approach</option>
+                <option>Yes — with minor tweaks</option>
+                <option>No — need significant changes</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Insights -->
+        <div class="ai-box">
+          <div class="ai-box-title"><i data-lucide="sparkles"></i> AI Insight Generator</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Click to generate a structured analysis prompt based on today's data — paste into ChatGPT or Claude for insights.</p>
+          <div class="ai-prompt-output" id="ai-prompt-output">Click "Generate Prompt" to build your AI analysis prompt...</div>
+          <button class="btn btn-primary" onclick="generateAIPrompt()"><i data-lucide="sparkles"></i> Generate Prompt</button>
+          <button class="btn" style="margin-left:8px;" onclick="copyAIPrompt()"><i data-lucide="clipboard-copy"></i> Copy to Clipboard</button>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: WEEKLY REVIEW
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-weekly">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Weekly Review</div>
+            <div class="section-sub">Reflect on the full trading week</div>
+          </div>
+          <button class="btn" onclick="copySection()"><i data-lucide="clipboard-copy"></i> Copy</button>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card blue">
+            <div class="metric-label">Week Net P&amp;L</div>
+            <input type="number" id="wk-pnl" placeholder="0.00" style="background:transparent;border:none;color:var(--blue);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;" oninput="updateWeeklyStats()">
+          </div>
+          <div class="metric-card green">
+            <div class="metric-label">Trades This Week</div>
+            <input type="number" id="wk-trades" placeholder="0" style="background:transparent;border:none;color:var(--green);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;">
+          </div>
+          <div class="metric-card yellow">
+            <div class="metric-label">Best Day</div>
+            <input type="text" id="wk-best" placeholder="Mon $+420" style="background:transparent;border:none;color:var(--yellow);font-size:16px;font-weight:700;padding:0;margin-top:4px;width:100%;">
+          </div>
+          <div class="metric-card red">
+            <div class="metric-label">Worst Day</div>
+            <input type="text" id="wk-worst" placeholder="Tue $-180" style="background:transparent;border:none;color:var(--red);font-size:16px;font-weight:700;padding:0;margin-top:4px;width:100%;">
+          </div>
+        </div>
+
+        <!-- Day heatmap -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="grid-3x3"></i> Day-by-Day Performance</div>
+          <div class="day-grid" id="week-day-grid">
+            <!-- generated by JS -->
+          </div>
+          <p style="font-size:11px;color:var(--text3);">
+            <span class="badge badge-green">Win</span>
+            <span class="badge badge-red">Loss</span>
+            <span class="badge badge-blue">Breakeven</span>
+            Click a day to toggle its result.
+          </p>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="trending-up"></i> What Worked This Week</div>
+            <textarea id="wk-worked" placeholder="Patterns, setups, behaviors that produced results..."></textarea>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="trending-down"></i> What Didn't Work</div>
+            <textarea id="wk-didnt" placeholder="Mistakes, missed setups, behavioral failures..."></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="target"></i> Next Week's Focus &amp; Goals</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Primary Focus (1 thing to improve)</label>
+              <input type="text" id="wk-focus" placeholder="e.g. Wait for confirmation before entry">
+            </div>
+            <div class="form-group">
+              <label>Weekly P&amp;L Target</label>
+              <input type="text" id="wk-target" placeholder="e.g. $500 or 3% account">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Key Themes / Patterns to Trade Next Week</label>
+            <textarea id="wk-themes" placeholder="e.g. Continuation plays after earnings, sector rotation into energy..."></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="bar-chart-2"></i> Weekly Behavioral Assessment</div>
+          <div class="form-row cols-3">
+            <div class="form-group">
+              <label>Discipline Score (1–10)</label>
+              <input type="number" min="1" max="10" id="wk-discipline" placeholder="8">
+            </div>
+            <div class="form-group">
+              <label>Patience Score (1–10)</label>
+              <input type="number" min="1" max="10" id="wk-patience" placeholder="7">
+            </div>
+            <div class="form-group">
+              <label>Consistency Score (1–10)</label>
+              <input type="number" min="1" max="10" id="wk-consistency" placeholder="7">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Weekly Reflection Notes</label>
+            <textarea id="wk-notes" style="min-height:120px;" placeholder="Free-form reflection on the week as a whole..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: MONTHLY REVIEW
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-monthly">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Monthly Review</div>
+            <div class="section-sub">Macro-level performance analysis</div>
+          </div>
+          <button class="btn" onclick="copySection()"><i data-lucide="clipboard-copy"></i> Copy</button>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card blue">
+            <div class="metric-label">Monthly Net P&amp;L</div>
+            <input type="number" id="mo-pnl" placeholder="0.00" style="background:transparent;border:none;color:var(--blue);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;">
+          </div>
+          <div class="metric-card green">
+            <div class="metric-label">Win Rate</div>
+            <input type="text" id="mo-wr" placeholder="0%" style="background:transparent;border:none;color:var(--green);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;">
+          </div>
+          <div class="metric-card yellow">
+            <div class="metric-label">Total Trades</div>
+            <input type="number" id="mo-trades" placeholder="0" style="background:transparent;border:none;color:var(--yellow);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;">
+          </div>
+          <div class="metric-card red">
+            <div class="metric-label">Max Drawdown</div>
+            <input type="text" id="mo-dd" placeholder="$0" style="background:transparent;border:none;color:var(--red);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;">
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="pie-chart"></i> P&amp;L by Setup Type</div>
+            <table class="data-table" id="monthly-setup-table">
+              <thead><tr><th>Setup</th><th>Trades</th><th>Win%</th><th>P&amp;L</th></tr></thead>
+              <tbody>
+                <tr><td><input type="text" placeholder="Bull Flag"></td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+                <tr><td><input type="text" placeholder="ORB"></td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+                <tr><td><input type="text" placeholder="VWAP Reclaim"></td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+                <tr><td><input type="text" placeholder="Add row..."></td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="clock"></i> P&amp;L by Time of Day</div>
+            <table class="data-table">
+              <thead><tr><th>Period</th><th>Trades</th><th>Win%</th><th>P&amp;L</th></tr></thead>
+              <tbody>
+                <tr><td>Open (9:30–10am)</td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+                <tr><td>Mid-Morning</td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+                <tr><td>Lunch Chop</td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+                <tr><td>Power Hour</td><td><input type="number" placeholder="0"></td><td><input type="text" placeholder="0%"></td><td><input type="text" placeholder="$0"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="trending-up"></i> Month's Equity Curve Notes</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Best Week of Month</label>
+              <input type="text" id="mo-best-wk" placeholder="Week 2 — $1,200 net">
+            </div>
+            <div class="form-group">
+              <label>Worst Week of Month</label>
+              <input type="text" id="mo-worst-wk" placeholder="Week 3 — -$340 drawdown">
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Biggest Win</label>
+              <input type="text" id="mo-big-win" placeholder="e.g. NVDA long $+620 on Nov 5">
+            </div>
+            <div class="form-group">
+              <label>Biggest Loss (and lesson)</label>
+              <input type="text" id="mo-big-loss" placeholder="e.g. TSLA short $-280 — chased breakdown">
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="check-circle"></i> Monthly Wins (Non-Financial)</div>
+            <textarea id="mo-wins" placeholder="Behavioral wins, milestones, habits improved..." style="min-height:100px;"></textarea>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="target"></i> Next Month's Goals</div>
+            <textarea id="mo-goals" placeholder="Specific, measurable goals for next month..." style="min-height:100px;"></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="file-text"></i> Monthly Narrative</div>
+          <textarea id="mo-narrative" style="min-height:160px;" placeholder="Write a comprehensive narrative of the month — what themes dominated, how your psychology evolved, what you learned about yourself as a trader..."></textarea>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: SETUP PLAYBOOK
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-playbook">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Setup Playbook</div>
+            <div class="section-sub">Document your edge — setups, rules, examples</div>
+          </div>
+          <button class="btn btn-primary" onclick="addSetupCard()"><i data-lucide="plus"></i> New Setup Card</button>
+        </div>
+        <div id="setup-cards-container"></div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: BEHAVIORAL TRACKER
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-behavioral">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Behavioral Tracker</div>
+            <div class="section-sub">Track patterns in your trading psychology over time</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="list-checks"></i> Core Behavior Metrics</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px;">Rate each behavior for today (1=Poor, 10=Excellent). Track weekly trends below.</p>
+          <div style="padding:4px 0;" id="behavior-tracker-rows">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="trending-up"></i> Best Behavioral Streaks</div>
+            <textarea id="beh-streaks" placeholder="e.g. 5 days in a row without revenge trading (Nov 1–5)..."></textarea>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="alert-triangle"></i> Recurring Problem Patterns</div>
+            <textarea id="beh-problems" placeholder="e.g. Consistently over-trade on Mondays after weekend reading..."></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="git-branch"></i> Behavioral Improvement Plan</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Top 3 Behaviors to Improve (this month)</label>
+              <textarea id="beh-improve" placeholder="1. Stop moving stops to break even too early&#10;2. Reduce overtrading in midday chop&#10;3. Follow pre-market plan consistently"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Specific Action Steps</label>
+              <textarea id="beh-actions" placeholder="1. Set hard stop in platform, never manual&#10;2. No trades 11am–1pm session rule&#10;3. Review plan before every trade entry"></textarea>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Weekly Behavioral Theme</label>
+            <input type="text" id="beh-theme" placeholder="e.g. This week: patience — waiting for confirmation before entering">
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: RISK DASHBOARD
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-risk">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Risk Dashboard</div>
+            <div class="section-sub">Monitor exposure, drawdown, and position sizing</div>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card blue">
+            <div class="metric-label">Account Size</div>
+            <input type="number" id="risk-account" placeholder="25000" oninput="updateRisk()" style="background:transparent;border:none;color:var(--blue);font-size:22px;font-weight:800;padding:0;margin-top:4px;width:100%;">
+          </div>
+          <div class="metric-card green">
+            <div class="metric-label">Max Risk / Trade</div>
+            <div style="display:flex;align-items:baseline;gap:4px;margin-top:6px;">
+              <input type="number" id="risk-per-trade-pct" placeholder="1" min="0.1" max="10" step="0.1" oninput="updateRisk()" style="background:transparent;border:none;color:var(--green);font-size:22px;font-weight:800;padding:0;width:50px;">
+              <span style="color:var(--green);font-size:18px;font-weight:700;">%</span>
+            </div>
+          </div>
+          <div class="metric-card yellow">
+            <div class="metric-label">Daily Loss Limit</div>
+            <div style="display:flex;align-items:baseline;gap:4px;margin-top:6px;">
+              <input type="number" id="risk-daily-pct" placeholder="2" min="0.5" max="20" step="0.5" oninput="updateRisk()" style="background:transparent;border:none;color:var(--yellow);font-size:22px;font-weight:800;padding:0;width:50px;">
+              <span style="color:var(--yellow);font-size:18px;font-weight:700;">%</span>
+            </div>
+          </div>
+          <div class="metric-card red">
+            <div class="metric-label">Max Drawdown</div>
+            <div style="display:flex;align-items:baseline;gap:4px;margin-top:6px;">
+              <input type="number" id="risk-max-dd-pct" placeholder="10" min="1" max="50" step="0.5" oninput="updateRisk()" style="background:transparent;border:none;color:var(--red);font-size:22px;font-weight:800;padding:0;width:50px;">
+              <span style="color:var(--red);font-size:18px;font-weight:700;">%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Calculated values -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="calculator"></i> Risk Calculations</div>
+          <div class="three-col" id="risk-calcs">
+            <div style="text-align:center;padding:16px;background:var(--card2);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">$ Risk / Trade</div>
+              <div style="font-size:24px;font-weight:800;color:var(--green);" id="calc-risk-dollar">$250</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:var(--card2);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Daily Loss Limit $</div>
+              <div style="font-size:24px;font-weight:800;color:var(--yellow);" id="calc-daily-dollar">$500</div>
+            </div>
+            <div style="text-align:center;padding:16px;background:var(--card2);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Max Drawdown $</div>
+              <div style="font-size:24px;font-weight:800;color:var(--red);" id="calc-dd-dollar">$2,500</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Drawdown Meter -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="gauge"></i> Drawdown Meter</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Current Drawdown ($)</label>
+              <input type="number" id="risk-current-dd" placeholder="0" oninput="updateDrawdownMeter()">
+            </div>
+            <div class="form-group">
+              <label>Peak Equity ($)</label>
+              <input type="number" id="risk-peak" placeholder="25000" oninput="updateDrawdownMeter()">
+            </div>
+          </div>
+          <div class="progress-label">
+            <span>Current Drawdown</span>
+            <span id="dd-meter-pct">0.0%</span>
+          </div>
+          <div class="drawdown-meter">
+            <div class="drawdown-fill" id="drawdown-fill" style="width:0%;background:var(--green);">0%</div>
+          </div>
+          <div class="drawdown-ticks">
+            <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+          </div>
+          <div id="dd-status" style="margin-top:10px;font-size:12px;color:var(--green);">✓ Within acceptable range</div>
+        </div>
+
+        <!-- Position Size Calculator -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="sigma"></i> Position Size Calculator</div>
+          <div class="form-row cols-4">
+            <div class="form-group">
+              <label>Entry Price</label>
+              <input type="number" id="ps-entry" placeholder="100.00" step="0.01" oninput="calcPosition()">
+            </div>
+            <div class="form-group">
+              <label>Stop Loss Price</label>
+              <input type="number" id="ps-stop" placeholder="98.50" step="0.01" oninput="calcPosition()">
+            </div>
+            <div class="form-group">
+              <label>Target Price</label>
+              <input type="number" id="ps-target" placeholder="103.00" step="0.01" oninput="calcPosition()">
+            </div>
+            <div class="form-group">
+              <label>Risk Amount ($)</label>
+              <input type="number" id="ps-risk" placeholder="250" oninput="calcPosition()">
+            </div>
+          </div>
+          <div class="three-col" style="margin-top:8px;">
+            <div style="text-align:center;padding:14px;background:var(--card2);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Shares / Contracts</div>
+              <div style="font-size:22px;font-weight:800;color:var(--blue);" id="ps-shares">—</div>
+            </div>
+            <div style="text-align:center;padding:14px;background:var(--card2);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">R/R Ratio</div>
+              <div style="font-size:22px;font-weight:800;color:var(--yellow);" id="ps-rr">—</div>
+            </div>
+            <div style="text-align:center;padding:14px;background:var(--card2);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Potential Reward</div>
+              <div style="font-size:22px;font-weight:800;color:var(--green);" id="ps-reward">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Risk Rules -->
+        <div class="card">
+          <div class="card-title"><i data-lucide="shield"></i> Risk Management Rules</div>
+          <div id="risk-rules-list">
+            <label class="check-item">
+              <input type="checkbox"><div class="check-box"></div><span class="check-label">Never risk more than 1% of account on a single trade</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox"><div class="check-box"></div><span class="check-label">Stop trading if daily loss limit is hit</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox"><div class="check-box"></div><span class="check-label">No adding to losing positions</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox"><div class="check-box"></div><span class="check-label">Reduce size by 50% after 2 consecutive losses</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox"><div class="check-box"></div><span class="check-label">Max 3 open positions simultaneously</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox"><div class="check-box"></div><span class="check-label">Review trade before entry: setup quality must be A or B grade</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: EMOTIONAL TRIGGERS MAP
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-emotions">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Emotional Triggers Map</div>
+            <div class="section-sub">Identify and manage emotional responses to market events</div>
+          </div>
+          <button class="btn btn-primary" onclick="addTrigger()"><i data-lucide="plus"></i> Add Trigger</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="zap"></i> Trigger — Response — Countermeasure Framework</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px;">Document what triggers you, how you typically react, and what you'll do differently.</p>
+          <div id="triggers-container"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="thermometer"></i> Emotional Heat Map (Self-Rate)</div>
+            <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Rate your current emotional intensity in each area (1=low, 10=high)</p>
+            <div id="emotion-heatmap"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="anchor"></i> Calming Protocols</div>
+            <textarea id="calm-protocols" style="min-height:140px;" placeholder="Document your go-to techniques for resetting emotionally:&#10;&#10;1. 4-7-8 breathing exercise (2 minutes)&#10;2. Step away from screen for 5 minutes&#10;3. Review trading rules card&#10;4. Journal the emotion before acting&#10;5. Call trading buddy / accountability partner"></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="book-marked"></i> Emotional Patterns Log</div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Situations Where You Trade Best</label>
+              <textarea id="em-best" placeholder="e.g. After a good night's sleep, when I've done pre-market prep, when markets are trending clearly..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>Situations Where You Trade Worst</label>
+              <textarea id="em-worst" placeholder="e.g. After a big loss, when I'm rushed, when markets are choppy and I'm bored, after news spikes..."></textarea>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Your Personal Trading Mantra / Affirmation</label>
+            <input type="text" id="em-mantra" placeholder="e.g. I trade the process, not the outcome. One trade at a time. I am a disciplined, patient trader.">
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: ACCOUNTABILITY CHECKLIST
+      ════════════════════════════════════ -->
+      <div class="section" id="sec-checklist">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Accountability Checklist</div>
+            <div class="section-sub">Daily, weekly, and monthly commitments</div>
+          </div>
+          <button class="btn" onclick="resetChecklist()"><i data-lucide="refresh-cw"></i> Reset</button>
+        </div>
+
+        <div class="three-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="sun"></i> Pre-Market (Morning)</div>
+            <div id="checklist-morning"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="zap"></i> During Trading</div>
+            <div id="checklist-during"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="moon"></i> Post-Market (Evening)</div>
+            <div id="checklist-evening"></div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title"><i data-lucide="calendar-check"></i> Weekly Commitments</div>
+            <div id="checklist-weekly"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i data-lucide="award"></i> Monthly Commitments</div>
+            <div id="checklist-monthly"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><i data-lucide="users"></i> Accountability Partner</div>
+          <div class="form-row cols-3">
+            <div class="form-group">
+              <label>Partner Name</label>
+              <input type="text" id="acc-partner" placeholder="Trading buddy name">
+            </div>
+            <div class="form-group">
+              <label>Check-in Frequency</label>
+              <select id="acc-freq">
+                <option>Daily</option>
+                <option>Weekly</option>
+                <option>Bi-weekly</option>
+                <option>Monthly</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Next Check-in Date</label>
+              <input type="date" id="acc-date">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Commitment Statement (sign off on this)</label>
+            <textarea id="acc-commitment" placeholder="I commit to following my trading plan, respecting my risk limits, and journaling every trading day. I will be honest about my results and hold myself accountable to continuous improvement..."></textarea>
+          </div>
+          <div style="margin-top:12px;">
+            <button class="btn btn-primary" onclick="signCommitment()"><i data-lucide="pen-line"></i> Sign &amp; Lock Commitment</button>
+          </div>
+          <div id="commitment-signed" style="display:none;margin-top:12px;padding:10px;background:rgba(63,185,80,0.1);border:1px solid var(--green);border-radius:6px;font-size:12px;color:var(--green);">
+            ✓ Commitment signed and locked.
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════
+           SECTION: BIAS ENGINE
+           ════════════════════════════════════ -->
+      <div id="sec-bias" class="section">
+
+        <!-- Section Header with Brisbane Clock -->
+        <div class="section-header" style="flex-wrap:wrap;gap:10px;">
+          <div>
+            <div class="section-title">Multi-Timeframe Bias Engine</div>
+            <div class="section-sub">Live market-structure analysis · HH/HL · BOS/CHoCH · Liquidity sweeps · Auto-refreshes daily · Brisbane Time (AEST UTC+10)</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <!-- Brisbane Clock -->
+            <div class="brisbane-clock-wrap">
+              <div class="brisbane-clock-label">Brisbane (AEST)</div>
+              <div class="brisbane-clock-time" id="brisbane-clock-time">--:--:--</div>
+              <div class="brisbane-clock-date" id="brisbane-clock-date">---</div>
+            </div>
+            <button class="btn btn-sm" onclick="fetchLivePrices()" title="Fetch live prices from free APIs">
+              <i data-lucide="refresh-cw"></i> Live Prices
+            </button>
+            <button class="btn btn-sm" onclick="toggleBiasSettings()" id="bias-settings-btn">
+              <i data-lucide="key"></i> API Key
+            </button>
+            <button class="btn btn-sm btn-primary" onclick="generateAllBias()" id="gen-all-btn">
+              <i data-lucide="brain"></i> Generate All
+            </button>
+          </div>
+        </div>
+
+        <!-- Auto-run Status Bar -->
+        <div class="auto-run-bar">
+          <div class="auto-run-left">
+            <div class="auto-run-dot" id="auto-run-dot"></div>
+            <span id="auto-run-status">Auto-analysis: <strong>Disabled</strong></span>
+            <span style="color:var(--text3);">|</span>
+            <span id="auto-run-last">Last run: <span id="last-run-text">Never</span></span>
+            <span style="color:var(--text3);">|</span>
+            <span>Next: <span id="next-run-text" style="color:var(--blue);">—</span></span>
+          </div>
+          <div class="auto-run-right">
+            <label style="font-size:11px;color:var(--text2);margin:0;">Daily at</label>
+            <input type="time" id="auto-run-time" value="08:00"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:12px;width:80px;"
+              onchange="saveAutoRunSettings()">
+            <label style="font-size:11px;color:var(--text2);margin:0;">AEST</label>
+            <label class="tog">
+              <input type="checkbox" id="auto-run-toggle" onchange="saveAutoRunSettings()">
+              <div class="tog-track"></div>
+              Enable
+            </label>
+          </div>
+        </div>
+
+        <!-- API Key Settings (collapsible) -->
+        <div class="api-key-card" id="bias-settings-card" style="display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:3px;">Anthropic API Key</div>
+              <div style="font-size:11px;color:var(--text3);">Stored in localStorage only — never sent anywhere except Anthropic's API directly.</div>
+            </div>
+            <button class="btn btn-sm" onclick="toggleBiasSettings()"><i data-lucide="x"></i></button>
+          </div>
+          <div class="api-key-row">
+            <input type="password" class="api-key-input" id="bias-api-key" placeholder="sk-ant-api03-..." autocomplete="off">
+            <button class="btn btn-sm" onclick="toggleApiKeyVisibility()"><i data-lucide="eye" id="eye-icon"></i></button>
+            <button class="btn btn-sm btn-green" onclick="saveApiKey()"><i data-lucide="save"></i> Save Key</button>
+          </div>
+          <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+            <div>
+              <label style="margin-bottom:5px;display:block;">Claude Model</label>
+              <select id="bias-model" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:6px 8px;font-size:12px;width:100%;">
+                <option value="claude-opus-4-6">claude-opus-4-6 — Best quality</option>
+                <option value="claude-sonnet-4-6" selected>claude-sonnet-4-6 — Fast + accurate</option>
+                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 — Fastest</option>
+              </select>
+            </div>
+            <div>
+              <label style="margin-bottom:5px;display:block;">Auto-refresh Every</label>
+              <select id="bias-refresh-hours" onchange="saveRefreshInterval()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:6px 8px;font-size:12px;width:100%;">
+                <option value="1">Every 1 hour</option>
+                <option value="2">Every 2 hours</option>
+                <option value="4" selected>Every 4 hours</option>
+                <option value="8">Every 8 hours</option>
+                <option value="24">Once daily</option>
+              </select>
+              <div style="font-size:10px;color:var(--text3);margin-top:5px;">Auto-runs when Bias Engine section is open</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TradingView Ticker Tape -->
+        <div class="ticker-tape-wrap" id="tv-ticker-tape"></div>
+
+        <!-- Disclaimer -->
+        <div style="background:rgba(210,153,34,0.07);border:1px solid rgba(210,153,34,0.25);border-radius:10px;padding:11px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start;">
+          <i data-lucide="triangle-alert" style="color:var(--yellow);flex-shrink:0;width:15px;height:15px;margin-top:1px;"></i>
+          <div style="font-size:11px;color:var(--text2);line-height:1.65;">
+            <strong style="color:var(--yellow);">Educational tool only.</strong> Live prices auto-fetch from free APIs at section load (EURUSD + XAU/USD). NAS100 price is shown in the TradingView chart — enter it manually for AI analysis. All times displayed in <strong style="color:var(--green);">Brisbane AEST (UTC+10)</strong>. Always verify with live charts before trading.
+          </div>
+        </div>
+
+        <!-- EURUSD Card -->
+        <div class="bias-symbol-card bias-card-eurusd" id="bias-card-EURUSD">
+          <div class="bias-card-header">
+            <div>
+              <div class="bias-symbol-label">EURUSD</div>
+              <div class="bias-symbol-sub">Euro / US Dollar · OANDA:EUR_USD</div>
+            </div>
+            <div id="overall-EURUSD" class="bias-overall-pill idle"><i data-lucide="minus"></i> Awaiting</div>
+            <div class="alignment-meter" id="align-EURUSD" style="width:80px;">
+              <div class="alignment-seg" id="align-EURUSD-1"></div>
+              <div class="alignment-seg" id="align-EURUSD-2"></div>
+              <div class="alignment-seg" id="align-EURUSD-3"></div>
+              <div class="alignment-seg" id="align-EURUSD-4"></div>
+            </div>
+            <div class="bias-price-wrap">
+              <label><span class="live-dot" id="live-dot-EURUSD" style="display:none;"></span>Current Price</label>
+              <input type="text" id="price-EURUSD" placeholder="e.g. 1.0850" style="width:110px;">
+              <button class="btn btn-sm fetch-price-btn" onclick="fetchLivePrices('EURUSD')" title="Fetch live price"><i data-lucide="refresh-cw" style="width:11px;height:11px;"></i></button>
+            </div>
+            <button class="btn btn-sm" onclick="generateSymbolBias('EURUSD')" id="btn-EURUSD">
+              <i data-lucide="zap"></i> Analyze
+            </button>
+          </div>
+          <!-- TradingView Chart: EURUSD -->
+          <div class="tv-chart-container" id="tv-chart-EURUSD">
+            <div class="tv-chart-loading"><i data-lucide="loader" style="width:14px;height:14px;"></i> Loading live chart…</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:14px;">
+            <label>Market Context (optional — paste chart observations, key levels, news catalyst)</label>
+            <textarea id="ctx-EURUSD" style="min-height:54px;" placeholder="e.g. Price rejected 1.0900 resistance yesterday, ECB meeting next Thursday, DXY showing weakness, forming HH/HL on 4H..."></textarea>
+          </div>
+          <div class="bias-table-wrap">
+            <table class="bias-table">
+              <thead>
+                <tr>
+                  <th style="width:70px">TF</th>
+                  <th style="width:130px">Bias</th>
+                  <th style="width:90px">Confidence</th>
+                  <th style="width:100px">Key Level</th>
+                  <th style="width:110px">Structure</th>
+                  <th>Explanation</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-EURUSD">
+                <tr><td class="bias-tf-label">1H</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);">Generate analysis to populate</td></tr>
+                <tr><td class="bias-tf-label">Daily</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+                <tr><td class="bias-tf-label">Weekly</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+                <tr><td class="bias-tf-label">Monthly</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="bias-overall-note" id="note-EURUSD" style="display:none;">
+            <div class="bias-overall-note-title">Overall Market Context</div>
+            <div id="note-text-EURUSD"></div>
+          </div>
+        </div>
+
+        <!-- XAUUSD Card -->
+        <div class="bias-symbol-card bias-card-xauusd" id="bias-card-XAUUSD">
+          <div class="bias-card-header">
+            <div>
+              <div class="bias-symbol-label">XAUUSD</div>
+              <div class="bias-symbol-sub">Gold / US Dollar · OANDA:XAU_USD</div>
+            </div>
+            <div id="overall-XAUUSD" class="bias-overall-pill idle"><i data-lucide="minus"></i> Awaiting</div>
+            <div class="alignment-meter" id="align-XAUUSD" style="width:80px;">
+              <div class="alignment-seg" id="align-XAUUSD-1"></div>
+              <div class="alignment-seg" id="align-XAUUSD-2"></div>
+              <div class="alignment-seg" id="align-XAUUSD-3"></div>
+              <div class="alignment-seg" id="align-XAUUSD-4"></div>
+            </div>
+            <div class="bias-price-wrap">
+              <label><span class="live-dot" id="live-dot-XAUUSD" style="display:none;"></span>Current Price</label>
+              <input type="text" id="price-XAUUSD" placeholder="e.g. 2350.00" style="width:110px;">
+              <button class="btn btn-sm fetch-price-btn" onclick="fetchLivePrices('XAUUSD')" title="Fetch live price"><i data-lucide="refresh-cw" style="width:11px;height:11px;"></i></button>
+            </div>
+            <button class="btn btn-sm" onclick="generateSymbolBias('XAUUSD')" id="btn-XAUUSD">
+              <i data-lucide="zap"></i> Analyze
+            </button>
+          </div>
+          <!-- TradingView Chart: XAUUSD -->
+          <div class="tv-chart-container" id="tv-chart-XAUUSD">
+            <div class="tv-chart-loading"><i data-lucide="loader" style="width:14px;height:14px;"></i> Loading live chart…</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:14px;">
+            <label>Market Context (optional)</label>
+            <textarea id="ctx-XAUUSD" style="min-height:54px;" placeholder="e.g. Gold consolidating above 2300, real yields falling, DXY weakening, geopolitical tensions rising, central banks buying..."></textarea>
+          </div>
+          <div class="bias-table-wrap">
+            <table class="bias-table">
+              <thead>
+                <tr>
+                  <th style="width:70px">TF</th>
+                  <th style="width:130px">Bias</th>
+                  <th style="width:90px">Confidence</th>
+                  <th style="width:100px">Key Level</th>
+                  <th style="width:110px">Structure</th>
+                  <th>Explanation</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-XAUUSD">
+                <tr><td class="bias-tf-label">1H</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);">Generate analysis to populate</td></tr>
+                <tr><td class="bias-tf-label">Daily</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+                <tr><td class="bias-tf-label">Weekly</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+                <tr><td class="bias-tf-label">Monthly</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="bias-overall-note" id="note-XAUUSD" style="display:none;">
+            <div class="bias-overall-note-title">Overall Market Context</div>
+            <div id="note-text-XAUUSD"></div>
+          </div>
+        </div>
+
+        <!-- NAS100USD Card -->
+        <div class="bias-symbol-card bias-card-nas100" id="bias-card-NAS100USD">
+          <div class="bias-card-header">
+            <div>
+              <div class="bias-symbol-label">NAS100USD</div>
+              <div class="bias-symbol-sub">NASDAQ 100 Index · OANDA:NAS100_USD</div>
+            </div>
+            <div id="overall-NAS100USD" class="bias-overall-pill idle"><i data-lucide="minus"></i> Awaiting</div>
+            <div class="alignment-meter" id="align-NAS100USD" style="width:80px;">
+              <div class="alignment-seg" id="align-NAS100USD-1"></div>
+              <div class="alignment-seg" id="align-NAS100USD-2"></div>
+              <div class="alignment-seg" id="align-NAS100USD-3"></div>
+              <div class="alignment-seg" id="align-NAS100USD-4"></div>
+            </div>
+            <div class="bias-price-wrap">
+              <label>Current Price</label>
+              <input type="text" id="price-NAS100USD" placeholder="e.g. 22000" style="width:130px;">
+            </div>
+            <button class="btn btn-sm" onclick="generateSymbolBias('NAS100USD')" id="btn-NAS100USD">
+              <i data-lucide="zap"></i> Analyze
+            </button>
+          </div>
+          <!-- TradingView Chart: NAS100 -->
+          <div class="tv-chart-container" id="tv-chart-NAS100USD">
+            <div class="tv-chart-loading"><i data-lucide="loader" style="width:14px;height:14px;"></i> Loading live chart…</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:14px;">
+            <label>Market Context (optional — NAS100 price shown in chart above, enter manually below)</label>
+            <textarea id="ctx-NAS100USD" style="min-height:54px;" placeholder="e.g. NAS100 holding above 21500 support, AI stocks leading, Fed pivoting dovish, VIX at 15, earnings season beginning..."></textarea>
+          </div>
+          <div class="bias-table-wrap">
+            <table class="bias-table">
+              <thead>
+                <tr>
+                  <th style="width:70px">TF</th>
+                  <th style="width:130px">Bias</th>
+                  <th style="width:90px">Confidence</th>
+                  <th style="width:100px">Key Level</th>
+                  <th style="width:110px">Structure</th>
+                  <th>Explanation</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-NAS100USD">
+                <tr><td class="bias-tf-label">1H</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);">Generate analysis to populate</td></tr>
+                <tr><td class="bias-tf-label">Daily</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+                <tr><td class="bias-tf-label">Weekly</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+                <tr><td class="bias-tf-label">Monthly</td><td><span class="bias-badge idle">— Pending</span></td><td>—</td><td>—</td><td>—</td><td class="bias-explanation" style="color:var(--text3);"></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="bias-overall-note" id="note-NAS100USD" style="display:none;">
+            <div class="bias-overall-note-title">Overall Market Context</div>
+            <div id="note-text-NAS100USD"></div>
+          </div>
+        </div>
+
+      </div><!-- /sec-bias -->
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ══════════════════════════════════════════
+     MT5 IMPORT MODAL
+     ══════════════════════════════════════════ -->
+<div class="modal-overlay" id="mt5-modal" onclick="handleModalBackdrop(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <i data-lucide="upload"></i>
+        Import MetaTrader 5 Trade History
+      </div>
+      <button class="btn btn-sm" onclick="closeMT5Modal()"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Drop Zone -->
+      <div class="drop-zone" id="mt5-drop-zone"
+           ondragover="handleDragOver(event)"
+           ondragleave="handleDragLeave(event)"
+           ondrop="handleDrop(event)">
+        <input type="file" accept=".csv,.txt" id="mt5-file-input" onchange="handleMT5FileSelect(event)">
+        <div class="drop-zone-icon">📂</div>
+        <div class="drop-zone-title">Drop your MT5 CSV file here</div>
+        <div class="drop-zone-sub">or click to browse — supports Deals and Positions export formats</div>
+      </div>
+
+      <!-- Format Guide -->
+      <div class="card" style="margin-bottom:20px;padding:16px;">
+        <div class="card-title" style="margin-bottom:10px;"><i data-lucide="info"></i> How to export from MetaTrader 5</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;color:var(--text2);line-height:1.7;">
+          <div>
+            <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Deals Export (recommended)</div>
+            1. Open MT5 → View → Terminal<br>
+            2. Click the <strong>History</strong> tab<br>
+            3. Right-click → <strong>Save as Report</strong><br>
+            4. Choose <strong>CSV</strong> format<br>
+            5. Upload the .csv file here
+          </div>
+          <div>
+            <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Positions / Statement Export</div>
+            1. Open MT5 → Account History<br>
+            2. Right-click the history list<br>
+            3. Click <strong>Save as Detailed Report</strong><br>
+            4. Export as <strong>CSV</strong><br>
+            5. Upload the .csv file here
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px;background:rgba(88,166,255,0.07);border-radius:6px;font-size:11px;color:var(--blue);">
+          ✦ Both tab-separated and comma-separated MT5 exports are supported. Open positions (no exit price yet) are imported as partial entries.
+        </div>
+      </div>
+
+      <!-- Detected Format Info -->
+      <div class="format-info" id="mt5-format-info">
+        <div class="format-badge" id="mt5-format-badge"><i data-lucide="file-text"></i> Detecting...</div>
+        <div id="mt5-format-desc"></div>
+      </div>
+
+      <!-- Import Summary Stats -->
+      <div class="import-stats" id="mt5-import-stats">
+        <div class="import-stat">
+          <div class="import-stat-val blue" id="mt5-stat-total">—</div>
+          <div class="import-stat-lbl">Total Trades</div>
+        </div>
+        <div class="import-stat">
+          <div class="import-stat-val green" id="mt5-stat-wins">—</div>
+          <div class="import-stat-lbl">Winners</div>
+        </div>
+        <div class="import-stat">
+          <div class="import-stat-val red" id="mt5-stat-losses">—</div>
+          <div class="import-stat-lbl">Losers</div>
+        </div>
+        <div class="import-stat">
+          <div class="import-stat-val" id="mt5-stat-pnl" style="font-size:18px;">—</div>
+          <div class="import-stat-lbl">Total Net P&amp;L</div>
+        </div>
+      </div>
+
+      <!-- Preview Table -->
+      <div class="import-preview" id="mt5-preview">
+        <div class="import-preview-header">
+          <div class="import-preview-title">Trade Preview</div>
+          <div style="font-size:11px;color:var(--text3);" id="mt5-preview-count"></div>
+        </div>
+        <div class="import-preview-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Symbol</th>
+                <th>Dir</th>
+                <th>Entry Time</th>
+                <th>Entry Price</th>
+                <th>Exit Time</th>
+                <th>Exit Price</th>
+                <th>Lot / Qty</th>
+                <th>Commission</th>
+                <th>Swap</th>
+                <th>P&amp;L</th>
+                <th>Net P&amp;L</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="mt5-preview-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /modal-body -->
+    <div class="modal-footer">
+      <div style="font-size:12px;color:var(--text2);" id="mt5-footer-msg">Select a file to begin import</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn" onclick="closeMT5Modal()">Cancel</button>
+        <button class="btn btn-primary" id="mt5-import-btn" onclick="importMT5Trades()" disabled style="opacity:0.4;cursor:not-allowed;">
+          <i data-lucide="check"></i> Import Trades
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast">
+  <i data-lucide="check-circle"></i>
+  <span id="toast-msg">Copied to clipboard!</span>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  setTodayDate();
+  initScorecard();
+  initBehaviorTracker();
+  initChecklists();
+  initSetupCards();
+  initTriggers();
+  initEmotionHeatmap();
+  initWeekGrid();
+  addTrade();          // start with one empty trade
+  updateRisk();
+  loadFromStorage();
+  updateStats();
+  updateDrawdownMeter();
+  loadApiKey();          // restore saved API key
+  loadAutoRunSettings(); // restore auto-run config
+  loadRefreshInterval(); // restore refresh interval
+  startBrisbaneClock();  // start Brisbane time clock
+  checkAutoSchedule();   // check immediately on load
+  lucide.createIcons(); // re-run after dynamic content
+});
+
+// ══════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════
+const sectionTitles = {
+  daily: 'Daily Journal',
+  weekly: 'Weekly Review',
+  monthly: 'Monthly Review',
+  playbook: 'Setup Playbook',
+  behavioral: 'Behavioral Tracker',
+  risk: 'Risk Dashboard',
+  emotions: 'Emotional Triggers Map',
+  checklist: 'Accountability Checklist',
+  bias: 'Multi-Timeframe Bias Engine'
+};
+
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', (e) => {
+    e.preventDefault();
+    const sec = item.dataset.section;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById('sec-' + sec).classList.add('active');
+    document.getElementById('topbar-title').textContent = sectionTitles[sec];
+    setTimeout(() => lucide.createIcons(), 50);
+    // Initialize TradingView widgets when Bias Engine section is opened
+    if (sec === 'bias') {
+      clearInterval(biasCountdownTimer);
+      biasCountdownTimer = null;
+      if (!biasWidgetsInitialized) {
+        // First visit — full init (loads charts + auto-analyzes)
+        setTimeout(() => initBiasWidgets(), 100);
+      } else {
+        // Returning visit — re-fetch prices then trigger analysis
+        setTimeout(async () => {
+          await fetchLivePrices();
+          triggerAutoAnalysis();
+        }, 100);
+      }
+    }
+  });
+});
+
+// ══════════════════════════════════════════
+// DATE
+// ══════════════════════════════════════════
+function setTodayDate() {
+  const now = new Date();
+  const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  document.getElementById('topbar-date').textContent = now.toLocaleDateString('en-US', opts);
+  const iso = now.toISOString().split('T')[0];
+  const planDate = document.getElementById('plan-date');
+  if (planDate) planDate.value = iso;
+}
+
+// ══════════════════════════════════════════
+// SCORECARD
+// ══════════════════════════════════════════
+const scorecardItems = [
+  { id: 'sc-plan', label: 'Pre-Market Preparation' },
+  { id: 'sc-entries', label: 'Entry Quality' },
+  { id: 'sc-exits', label: 'Exit Execution' },
+  { id: 'sc-sizing', label: 'Position Sizing' },
+  { id: 'sc-patience', label: 'Patience / Waiting' },
+  { id: 'sc-emotion', label: 'Emotional Control' },
+  { id: 'sc-rules', label: 'Rule Adherence' },
+  { id: 'sc-review', label: 'End-of-Day Review' },
+  { id: 'sc-journal', label: 'Journaling Completeness' },
+];
+
+function initScorecard() {
+  const grid = document.getElementById('scorecard-grid');
+  scorecardItems.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'form-group';
+    div.innerHTML = `
+      <label>${item.label}</label>
+      <div class="score-input-wrap">
+        <input type="number" id="${item.id}" min="1" max="10" placeholder="—" oninput="updateScoreBar(this); updateStats()">
+        <div class="score-bar"><div class="score-fill" id="${item.id}-bar" style="width:0%;background:var(--green)"></div></div>
+      </div>`;
+    grid.appendChild(div);
+  });
+}
+
+function updateScoreBar(input) {
+  const v = Math.min(10, Math.max(1, parseFloat(input.value) || 0));
+  const bar = document.getElementById(input.id + '-bar');
+  if (!bar) return;
+  const pct = (v / 10) * 100;
+  bar.style.width = pct + '%';
+  bar.style.background = v >= 7 ? 'var(--green)' : v >= 4 ? 'var(--yellow)' : 'var(--red)';
+}
+
+// ══════════════════════════════════════════
+// STATS UPDATE
+// ══════════════════════════════════════════
+function updateStats() {
+  const rows = document.querySelectorAll('.trade-card');
+  let totalPnL = 0, wins = 0, losses = 0, totalR = 0, countR = 0;
+
+  rows.forEach(card => {
+    const pnl = parseFloat(card.querySelector('.trade-pnl')?.value) || 0;
+    const r = parseFloat(card.querySelector('.trade-r')?.value) || 0;
+    totalPnL += pnl;
+    if (pnl > 0) wins++;
+    else if (pnl < 0) losses++;
+    if (r !== 0) { totalR += r; countR++; }
+  });
+
+  const total = wins + losses;
+  const wr = total > 0 ? Math.round((wins / total) * 100) : 0;
+  const avgR = countR > 0 ? (totalR / countR).toFixed(2) : '0.00';
+
+  document.getElementById('stat-pnl').textContent = (totalPnL >= 0 ? '+$' : '-$') + Math.abs(totalPnL).toFixed(2);
+  document.getElementById('stat-pnl').className = 'metric-value ' + (totalPnL >= 0 ? 'green' : 'red');
+  document.getElementById('stat-wr').textContent = wr + '%';
+  document.getElementById('stat-wr-sub').textContent = wins + 'W / ' + losses + 'L';
+  document.getElementById('stat-r').textContent = (avgR >= 0 ? '+' : '') + avgR + 'R';
+
+  // Behavioral score
+  let scoreTotal = 0, scoreCount = 0;
+  scorecardItems.forEach(item => {
+    const v = parseFloat(document.getElementById(item.id)?.value);
+    if (!isNaN(v)) { scoreTotal += v; scoreCount++; }
+  });
+  const behScore = scoreCount > 0 ? (scoreTotal / scoreCount).toFixed(1) : '—';
+  const behEl = document.getElementById('stat-beh');
+  behEl.textContent = behScore;
+  behEl.className = 'metric-value ' + (behScore >= 7 ? 'green' : behScore >= 4 ? 'yellow' : 'red');
+}
+
+// ══════════════════════════════════════════
+// TRADE LOG
+// ══════════════════════════════════════════
+let tradeCount = 0;
+
+function addTrade() {
+  tradeCount++;
+  const n = tradeCount;
+  const container = document.getElementById('trade-log-container');
+  const card = document.createElement('div');
+  card.className = 'trade-card';
+  card.id = 'trade-' + n;
+  card.innerHTML = `
+    <div class="trade-card-header">
+      <span class="trade-card-num">TRADE #${n}</span>
+      <button class="remove-btn" onclick="removeTrade(${n})"><i data-lucide="x"></i></button>
+    </div>
+    <div class="form-row cols-4">
+      <div class="form-group">
+        <label>Ticker / Symbol</label>
+        <input type="text" class="trade-ticker" placeholder="AAPL" oninput="syncGradeMatrix()">
+      </div>
+      <div class="form-group">
+        <label>Direction</label>
+        <select class="trade-dir">
+          <option>Long</option>
+          <option>Short</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Setup Type</label>
+        <input type="text" class="trade-setup" placeholder="Bull Flag, ORB, VWAP...">
+      </div>
+      <div class="form-group">
+        <label>Grade</label>
+        <select class="trade-grade">
+          <option value="">— Grade —</option>
+          <option>A+</option><option>A</option><option>B</option><option>C</option><option>D</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row cols-4">
+      <div class="form-group">
+        <label>Entry Price</label>
+        <input type="number" class="trade-entry" placeholder="0.00" step="0.01" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Exit Price</label>
+        <input type="number" class="trade-exit" placeholder="0.00" step="0.01" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Shares / Qty</label>
+        <input type="number" class="trade-qty" placeholder="100" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Stop Loss</label>
+        <input type="number" class="trade-stop" placeholder="0.00" step="0.01">
+      </div>
+    </div>
+    <div class="form-row cols-4">
+      <div class="form-group">
+        <label>P&amp;L ($)</label>
+        <input type="number" class="trade-pnl" placeholder="0.00" step="0.01" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>R-Multiple</label>
+        <input type="number" class="trade-r" placeholder="0.0" step="0.1" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Time In</label>
+        <input type="time" class="trade-time-in">
+      </div>
+      <div class="form-group">
+        <label>Time Out</label>
+        <input type="time" class="trade-time-out">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Trade Notes</label>
+      <input type="text" class="trade-notes" placeholder="Entry reason, what happened, what you learned...">
+    </div>`;
+  container.appendChild(card);
+  syncGradeMatrix();
+  setTimeout(() => lucide.createIcons(), 50);
+}
+
+function removeTrade(n) {
+  const el = document.getElementById('trade-' + n);
+  if (el) el.remove();
+  updateStats();
+  syncGradeMatrix();
+}
+
+// ══════════════════════════════════════════
+// GRADE MATRIX
+// ══════════════════════════════════════════
+function syncGradeMatrix() {
+  const tbody = document.getElementById('grade-matrix-body');
+  const cards = document.querySelectorAll('.trade-card');
+  tbody.innerHTML = '';
+  if (cards.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-size:12px;">Add trades above</td></tr>';
+    return;
+  }
+  cards.forEach((card, i) => {
+    const ticker = card.querySelector('.trade-ticker')?.value || '—';
+    const tr = document.createElement('tr');
+    const gradeOpts = ['', 'A+', 'A', 'B', 'C', 'D'].map(g => `<option value="${g}">${g || '—'}</option>`).join('');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td style="font-weight:600">${ticker || '—'}</td>
+      <td><select class="grade-select">${gradeOpts}</select></td>
+      <td><select class="grade-select">${gradeOpts}</select></td>
+      <td><select class="grade-select">${gradeOpts}</select></td>
+      <td><select class="grade-select">${gradeOpts}</select></td>
+      <td><select class="grade-select">${gradeOpts}</select></td>
+      <td><select class="grade-select">${gradeOpts}</select></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════════════════════════════════════
+// SETUP PLAYBOOK
+// ══════════════════════════════════════════
+let setupCount = 0;
+
+function initSetupCards() {
+  addSetupCard(); // default first card
+}
+
+function addSetupCard() {
+  setupCount++;
+  const n = setupCount;
+  const container = document.getElementById('setup-cards-container');
+  const card = document.createElement('div');
+  card.className = 'setup-card';
+  card.id = 'setup-' + n;
+  card.innerHTML = `
+    <div class="setup-card-header">
+      <input type="text" placeholder="Setup Name (e.g. Bull Flag Breakout)" style="font-size:16px;font-weight:700;background:transparent;border:none;color:var(--text);border-bottom:1px solid var(--border);border-radius:0;padding:4px 0;flex:1;">
+      <button class="btn btn-sm" style="margin-left:12px;" onclick="removeSetup(${n})"><i data-lucide="trash-2"></i></button>
+    </div>
+    <div class="form-row cols-3">
+      <div class="form-group">
+        <label>Market Condition</label>
+        <select>
+          <option>Trending</option><option>Range-bound</option><option>High Volatility</option>
+          <option>Low Volatility</option><option>Any</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Timeframe</label>
+        <input type="text" placeholder="e.g. 5min, 15min, Daily">
+      </div>
+      <div class="form-group">
+        <label>Avg R-Multiple</label>
+        <input type="number" placeholder="2.5" step="0.1">
+      </div>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group">
+        <label>Entry Criteria (checklist)</label>
+        <textarea placeholder="1. Price consolidating in tight range&#10;2. Volume declining during consolidation&#10;3. Above VWAP and rising 20 EMA&#10;4. Volume spike on breakout candle"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Exit / Target Rules</label>
+        <textarea placeholder="1. Initial target: measured move = pole height&#10;2. Scale 50% at 1R, trail rest&#10;3. Hard stop below breakout candle low"></textarea>
+      </div>
+    </div>
+    <div class="form-row cols-3">
+      <div class="form-group">
+        <label>Stop Placement</label>
+        <input type="text" placeholder="e.g. Below consolidation low">
+      </div>
+      <div class="form-group">
+        <label>Invalidation</label>
+        <input type="text" placeholder="e.g. Close back inside range">
+      </div>
+      <div class="form-group">
+        <label>Best Time to Trade</label>
+        <input type="text" placeholder="e.g. First 90 min, Power Hour">
+      </div>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group">
+        <label>What This Setup Looks Like (notes)</label>
+        <textarea placeholder="Detailed visual description, key characteristics, common variations..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Example Tickers / Historical Trades</label>
+        <textarea placeholder="e.g. NVDA 11/5/23 — textbook bull flag on 5min, +2.8R&#10;TSLA 10/22/23 — false breakout, stopped out -1R"></textarea>
+      </div>
+    </div>
+    <div class="form-row cols-3">
+      <div class="form-group">
+        <label>Win Rate (estimated)</label>
+        <input type="text" placeholder="60%">
+      </div>
+      <div class="form-group">
+        <label>Confidence Level</label>
+        <select>
+          <option>A+ — Highest Conviction</option>
+          <option>A — Strong Edge</option>
+          <option>B — Moderate Edge</option>
+          <option>C — Still Developing</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select>
+          <option>Active — Trading Live</option>
+          <option>Paper Trading</option>
+          <option>Backtesting</option>
+          <option>Retired</option>
+        </select>
+      </div>
+    </div>`;
+  container.appendChild(card);
+  setTimeout(() => lucide.createIcons(), 50);
+}
+
+function removeSetup(n) {
+  const el = document.getElementById('setup-' + n);
+  if (el) el.remove();
+}
+
+// ══════════════════════════════════════════
+// BEHAVIORAL TRACKER
+// ══════════════════════════════════════════
+const behaviors = [
+  'Followed Trading Plan',
+  'Waited for A+ Setups Only',
+  'Correct Position Sizing',
+  'No Revenge Trading',
+  'No FOMO Chasing',
+  'Honored Stop Losses',
+  'No Overtrading',
+  'Managed Emotions Well',
+  'Pre-Market Prep Completed',
+  'Journal Completed',
+];
+
+function initBehaviorTracker() {
+  const container = document.getElementById('behavior-tracker-rows');
+  behaviors.forEach((beh, i) => {
+    const row = document.createElement('div');
+    row.className = 'behavior-row';
+    row.innerHTML = `
+      <div class="behavior-name">${beh}</div>
+      <div class="behavior-score-cell">
+        <input type="number" id="beh-${i}-mon" min="1" max="10" placeholder="—" style="width:60px;text-align:center;">
+      </div>
+      <div class="behavior-score-cell">
+        <input type="number" id="beh-${i}-mid" min="1" max="10" placeholder="—" style="width:60px;text-align:center;">
+      </div>
+      <div class="behavior-score-cell">
+        <input type="number" id="beh-${i}-fri" min="1" max="10" placeholder="—" style="width:60px;text-align:center;">
+      </div>
+      <div><span class="badge badge-blue" id="beh-${i}-avg">—</span></div>`;
+    container.appendChild(row);
+  });
+
+  // Header
+  const header = document.createElement('div');
+  header.style = 'display:grid;grid-template-columns:1fr 80px 80px 80px auto;gap:12px;padding:4px 0 10px;border-bottom:1px solid var(--border);margin-bottom:4px;';
+  header.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);font-weight:600;">BEHAVIOR</div>
+    <div style="font-size:11px;color:var(--text3);font-weight:600;text-align:center;">MON</div>
+    <div style="font-size:11px;color:var(--text3);font-weight:600;text-align:center;">WED</div>
+    <div style="font-size:11px;color:var(--text3);font-weight:600;text-align:center;">FRI</div>
+    <div style="font-size:11px;color:var(--text3);font-weight:600;">AVG</div>`;
+  container.insertBefore(header, container.firstChild);
+
+  // Auto-avg
+  container.addEventListener('input', () => {
+    behaviors.forEach((_, i) => {
+      const vals = ['mon','mid','fri'].map(d => parseFloat(document.getElementById(`beh-${i}-${d}`)?.value)).filter(v => !isNaN(v));
+      const avg = vals.length ? (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(1) : '—';
+      const badge = document.getElementById(`beh-${i}-avg`);
+      if (badge) {
+        badge.textContent = avg;
+        badge.className = 'badge ' + (avg >= 7 ? 'badge-green' : avg >= 4 ? 'badge-yellow' : avg !== '—' ? 'badge-red' : 'badge-blue');
+      }
+    });
+  });
+}
+
+// ══════════════════════════════════════════
+// EMOTIONAL TRIGGERS
+// ══════════════════════════════════════════
+let triggerCount = 0;
+
+function initTriggers() {
+  addTrigger();
+  addTrigger();
+}
+
+function addTrigger() {
+  triggerCount++;
+  const container = document.getElementById('triggers-container');
+  const div = document.createElement('div');
+  div.className = 'trigger-item';
+  div.id = 'trigger-' + triggerCount;
+  div.innerHTML = `
+    <div class="form-group">
+      <label>Trigger Event</label>
+      <select style="margin-bottom:6px;">
+        <option>Big loss on a trade</option>
+        <option>Missing a setup</option>
+        <option>Consecutive losses</option>
+        <option>Seeing others profit</option>
+        <option>FOMO on move</option>
+        <option>Choppy market</option>
+        <option>Account drawdown</option>
+        <option>News shock</option>
+        <option>Custom...</option>
+      </select>
+      <textarea placeholder="Describe the specific trigger..." style="min-height:60px;"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Typical Response</label>
+      <textarea placeholder="How do you typically react? (be honest)&#10;e.g. I immediately enter another trade to make back the loss, I increase size, I abandon my plan..." style="min-height:100px;"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Countermeasure</label>
+      <textarea placeholder="What will you do INSTEAD?&#10;e.g. Close platform, take 10-min walk, review rules card, call accountability partner..." style="min-height:100px;"></textarea>
+    </div>`;
+  container.appendChild(div);
+}
+
+// ══════════════════════════════════════════
+// EMOTION HEATMAP
+// ══════════════════════════════════════════
+const emotionDimensions = [
+  { label: 'Anxiety', id: 'em-anxiety' },
+  { label: 'Overconfidence', id: 'em-overconf' },
+  { label: 'Fear of Loss', id: 'em-fear' },
+  { label: 'FOMO', id: 'em-fomo' },
+  { label: 'Frustration', id: 'em-frust' },
+  { label: 'Greed', id: 'em-greed' },
+];
+
+function initEmotionHeatmap() {
+  const container = document.getElementById('emotion-heatmap');
+  emotionDimensions.forEach(dim => {
+    const div = document.createElement('div');
+    div.className = 'progress-wrap';
+    div.innerHTML = `
+      <div class="progress-label">
+        <span>${dim.label}</span>
+        <span id="${dim.id}-val">5</span>
+      </div>
+      <input type="range" id="${dim.id}" min="1" max="10" value="5" style="width:100%;accent-color:var(--blue);" oninput="updateEmotionBar(this, '${dim.id}')">`;
+    container.appendChild(div);
+  });
+}
+
+function updateEmotionBar(input, id) {
+  document.getElementById(id + '-val').textContent = input.value;
+  const v = parseInt(input.value);
+  input.style.accentColor = v >= 7 ? 'var(--red)' : v >= 4 ? 'var(--yellow)' : 'var(--green)';
+}
+
+// ══════════════════════════════════════════
+// EMOTION TOGGLE
+// ══════════════════════════════════════════
+function toggleEmotion(btn) {
+  btn.classList.toggle('selected');
+}
+
+// ══════════════════════════════════════════
+// CHECKLISTS
+// ══════════════════════════════════════════
+const checklists = {
+  morning: [
+    'Review economic calendar for key events',
+    'Identify overnight gaps and pre-market movers',
+    'Mark key support/resistance levels on charts',
+    'Write pre-market plan in journal',
+    'Set daily loss limit alert',
+    'Review yesterday\'s lessons',
+    'Check mental state — ready to trade?',
+    'Prepare watchlist with setups',
+  ],
+  during: [
+    'Only take trades matching your plan',
+    'Check setup quality before entering (A/B grade only)',
+    'Confirm position size before executing',
+    'Set stop loss immediately after entry',
+    'No revenge trading after a loss',
+    'No FOMO chasing moves you missed',
+    'Stop trading if daily loss limit hit',
+    'Stay off social media during market hours',
+  ],
+  evening: [
+    'Log all trades in trade log',
+    'Calculate daily P&L accurately',
+    'Complete process scorecard',
+    'Fill out end-of-day review',
+    'Identify 1 win and 1 lesson',
+    'Plan tomorrow\'s watchlist',
+    'Review charts of trades taken',
+    'Rate overall day performance',
+  ],
+  weekly: [
+    'Complete weekly review document',
+    'Analyze P&L by setup type',
+    'Review all trade screenshots',
+    'Identify recurring behavioral patterns',
+    'Update setup playbook if needed',
+    'Set focus theme for next week',
+    'Check-in with accountability partner',
+  ],
+  monthly: [
+    'Complete full monthly review',
+    'Calculate monthly win rate and R-multiple',
+    'Analyze P&L by time of day',
+    'Review all major wins and losses in detail',
+    'Update behavioral tracker trends',
+    'Adjust risk parameters if needed',
+    'Set monthly goals for next month',
+    'Schedule any trading education / courses',
+  ]
+};
+
+function initChecklists() {
+  Object.entries(checklists).forEach(([key, items]) => {
+    const container = document.getElementById('checklist-' + key);
+    if (!container) return;
+    items.forEach((item, i) => {
+      const label = document.createElement('label');
+      label.className = 'check-item';
+      label.innerHTML = `
+        <input type="checkbox" id="chk-${key}-${i}">
+        <div class="check-box"></div>
+        <span class="check-label">${item}</span>`;
+      container.appendChild(label);
+    });
+  });
+}
+
+function resetChecklist() {
+  document.querySelectorAll('.check-item input[type="checkbox"]').forEach(cb => {
+    cb.checked = false;
+  });
+  showToast('Checklist reset!');
+}
+
+// ══════════════════════════════════════════
+// WEEKLY GRID
+// ══════════════════════════════════════════
+const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const dayCycleStates = ['off', 'win', 'loss', 'be'];
+
+function initWeekGrid() {
+  const grid = document.getElementById('week-day-grid');
+  weekDays.forEach((day, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'day-cell ' + (i < 5 ? 'off' : 'off');
+    cell.dataset.state = 'off';
+    cell.textContent = day;
+    cell.title = `Click to toggle ${day}'s result`;
+    cell.addEventListener('click', () => {
+      const states = dayCycleStates;
+      const idx = states.indexOf(cell.dataset.state);
+      const next = states[(idx + 1) % states.length];
+      cell.dataset.state = next;
+      cell.className = 'day-cell ' + next;
+    });
+    grid.appendChild(cell);
+  });
+}
+
+// ══════════════════════════════════════════
+// RISK
+// ══════════════════════════════════════════
+function updateRisk() {
+  const account = parseFloat(document.getElementById('risk-account')?.value) || 25000;
+  const riskPct = parseFloat(document.getElementById('risk-per-trade-pct')?.value) || 1;
+  const dailyPct = parseFloat(document.getElementById('risk-daily-pct')?.value) || 2;
+  const ddPct = parseFloat(document.getElementById('risk-max-dd-pct')?.value) || 10;
+
+  const riskDollar = account * riskPct / 100;
+  const dailyDollar = account * dailyPct / 100;
+  const ddDollar = account * ddPct / 100;
+
+  const fmt = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  document.getElementById('calc-risk-dollar').textContent = fmt(riskDollar);
+  document.getElementById('calc-daily-dollar').textContent = fmt(dailyDollar);
+  document.getElementById('calc-dd-dollar').textContent = fmt(ddDollar);
+
+  const psRisk = document.getElementById('ps-risk');
+  if (psRisk && !psRisk.value) psRisk.placeholder = riskDollar;
+}
+
+function updateDrawdownMeter() {
+  const currentDD = parseFloat(document.getElementById('risk-current-dd')?.value) || 0;
+  const peak = parseFloat(document.getElementById('risk-peak')?.value) || 25000;
+  const maxDDPct = parseFloat(document.getElementById('risk-max-dd-pct')?.value) || 10;
+  const maxDD = peak * maxDDPct / 100;
+
+  const pct = maxDD > 0 ? Math.min(100, (currentDD / maxDD) * 100) : 0;
+  const fill = document.getElementById('drawdown-fill');
+  const status = document.getElementById('dd-status');
+  const meterPct = document.getElementById('dd-meter-pct');
+
+  fill.style.width = pct + '%';
+  fill.textContent = pct.toFixed(1) + '%';
+
+  const ddPctOfAccount = peak > 0 ? (currentDD / peak * 100) : 0;
+  meterPct.textContent = ddPctOfAccount.toFixed(1) + '%';
+
+  if (pct >= 80) {
+    fill.style.background = 'var(--red)';
+    status.style.color = 'var(--red)';
+    status.textContent = '⚠ DANGER: Near max drawdown limit — stop trading!';
+  } else if (pct >= 50) {
+    fill.style.background = 'var(--yellow)';
+    status.style.color = 'var(--yellow)';
+    status.textContent = '⚡ WARNING: Significant drawdown — reduce size';
+  } else {
+    fill.style.background = 'var(--green)';
+    status.style.color = 'var(--green)';
+    status.textContent = '✓ Within acceptable range';
+  }
+}
+
+function calcPosition() {
+  const entry = parseFloat(document.getElementById('ps-entry')?.value);
+  const stop = parseFloat(document.getElementById('ps-stop')?.value);
+  const target = parseFloat(document.getElementById('ps-target')?.value);
+  const risk = parseFloat(document.getElementById('ps-risk')?.value) || 250;
+
+  if (entry && stop && entry !== stop) {
+    const stopDist = Math.abs(entry - stop);
+    const shares = Math.floor(risk / stopDist);
+    document.getElementById('ps-shares').textContent = shares.toLocaleString();
+
+    if (target) {
+      const rewardDist = Math.abs(target - entry);
+      const rr = (rewardDist / stopDist).toFixed(2);
+      const reward = (shares * rewardDist).toFixed(2);
+      document.getElementById('ps-rr').textContent = rr + ':1';
+      document.getElementById('ps-reward').textContent = '$' + parseFloat(reward).toLocaleString();
+    }
+  }
+}
+
+// ══════════════════════════════════════════
+// AI PROMPT GENERATOR
+// ══════════════════════════════════════════
+function generateAIPrompt() {
+  const date = document.getElementById('plan-date')?.value || new Date().toISOString().split('T')[0];
+  const bias = document.getElementById('plan-bias')?.value || 'Unknown';
+  const mental = document.getElementById('plan-mental')?.value || 'Unknown';
+  const rules = document.getElementById('plan-rules')?.value || '';
+  const eodGood = document.getElementById('eod-good')?.value || '';
+  const eodBad = document.getElementById('eod-bad')?.value || '';
+  const lesson = document.getElementById('eod-lesson')?.value || '';
+  const psychChallenge = document.getElementById('psych-challenge')?.value || '';
+
+  const trades = [];
+  document.querySelectorAll('.trade-card').forEach((card, i) => {
+    const ticker = card.querySelector('.trade-ticker')?.value;
+    const pnl = card.querySelector('.trade-pnl')?.value;
+    const r = card.querySelector('.trade-r')?.value;
+    const setup = card.querySelector('.trade-setup')?.value;
+    const grade = card.querySelector('.trade-grade')?.value;
+    const notes = card.querySelector('.trade-notes')?.value;
+    if (ticker || pnl) {
+      trades.push(`Trade ${i+1}: ${ticker||'?'} | Setup: ${setup||'?'} | P&L: $${pnl||0} | R: ${r||0} | Grade: ${grade||'?'} | Notes: ${notes||'none'}`);
+    }
+  });
+
+  const pnl = document.getElementById('stat-pnl')?.textContent || '$0';
+  const wr = document.getElementById('stat-wr')?.textContent || '0%';
+  const rMultiple = document.getElementById('stat-r')?.textContent || '0R';
+  const behScore = document.getElementById('stat-beh')?.textContent || '—';
+
+  const prompt = `You are a professional trading coach analyzing a trader's journal entry. Please provide specific, actionable feedback.
+
+DATE: ${date}
+MARKET BIAS: ${bias}
+MENTAL STATE: ${mental}
+
+DAILY STATS:
+- Net P&L: ${pnl}
+- Win Rate: ${wr}
+- Avg R-Multiple: ${rMultiple}
+- Behavioral Score: ${behScore}/10
+
+TRADE LOG:
+${trades.length > 0 ? trades.join('\n') : 'No trades logged today.'}
+
+RULES SET FOR TODAY:
+${rules || 'None specified'}
+
+PSYCHOLOGICAL CHALLENGES:
+${psychChallenge || 'None noted'}
+
+WHAT WENT WELL:
+${eodGood || 'Not completed'}
+
+WHAT NEEDS IMPROVEMENT:
+${eodBad || 'Not completed'}
+
+KEY LESSON:
+${lesson || 'Not completed'}
+
+Please analyze:
+1. Pattern recognition — what behavioral patterns do you see?
+2. Risk management assessment — was risk appropriate?
+3. Process vs outcome — was this a good process day regardless of P&L?
+4. Specific improvement actions for tomorrow
+5. One key psychological insight based on the data above`;
+
+  document.getElementById('ai-prompt-output').textContent = prompt;
+}
+
+function copyAIPrompt() {
+  const text = document.getElementById('ai-prompt-output').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('AI prompt copied!'));
+}
+
+// ══════════════════════════════════════════
+// COPY SECTION
+// ══════════════════════════════════════════
+function copySection() {
+  const activeSection = document.querySelector('.section.active');
+  if (!activeSection) return;
+
+  const lines = [];
+  lines.push('# ' + document.getElementById('topbar-title').textContent);
+  lines.push('Date: ' + document.getElementById('topbar-date').textContent);
+  lines.push('');
+
+  activeSection.querySelectorAll('input, textarea, select').forEach(el => {
+    const label = el.closest('.form-group')?.querySelector('label')?.textContent?.trim();
+    const val = el.value?.trim();
+    if (label && val) lines.push(`${label}: ${val}`);
+  });
+
+  navigator.clipboard.writeText(lines.join('\n')).then(() => showToast('Section copied to clipboard!'));
+}
+
+// ══════════════════════════════════════════
+// COMMITMENT
+// ══════════════════════════════════════════
+function signCommitment() {
+  const text = document.getElementById('acc-commitment')?.value?.trim();
+  if (!text) { showToast('Please write your commitment first!'); return; }
+  document.getElementById('commitment-signed').style.display = 'block';
+  document.getElementById('acc-commitment').readOnly = true;
+  showToast('Commitment signed! ✓');
+}
+
+// ══════════════════════════════════════════
+// SAVE / LOAD (localStorage)
+// ══════════════════════════════════════════
+function saveAll() {
+  const data = {};
+  document.querySelectorAll('input[id], textarea[id], select[id]').forEach(el => {
+    data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  localStorage.setItem('tradejournal-v1', JSON.stringify(data));
+  showToast('Journal saved!');
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem('tradejournal-v1');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    Object.entries(data).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = val;
+      else el.value = val;
+    });
+    // Refresh score bars
+    scorecardItems.forEach(item => {
+      const el = document.getElementById(item.id);
+      if (el && el.value) updateScoreBar(el);
+    });
+    updateStats();
+    updateRisk();
+    updateDrawdownMeter();
+  } catch(e) {}
+}
+
+// Auto-save every 60s
+setInterval(saveAll, 60000);
+
+// ══════════════════════════════════════════
+// BRISBANE TIME ENGINE (AEST UTC+10, no DST)
+// ══════════════════════════════════════════
+const BRISBANE_TZ = 'Australia/Brisbane';
+
+function getBrisbaneFormatter(opts) {
+  return new Intl.DateTimeFormat('en-AU', { timeZone: BRISBANE_TZ, ...opts });
+}
+
+function getBrisbaneTimeStr() {
+  return getBrisbaneFormatter({ hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).format(new Date());
+}
+
+function getBrisbaneDateStr() {
+  return getBrisbaneFormatter({ weekday:'short', day:'numeric', month:'short', year:'numeric' }).format(new Date());
+}
+
+function getBrisbaneDateKey() {
+  // Returns YYYY-MM-DD in Brisbane time (used as last-run key)
+  const parts = getBrisbaneFormatter({ year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(new Date());
+  const p = {};
+  parts.forEach(x => { p[x.type] = x.value; });
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function getBrisbaneHHMM() {
+  return getBrisbaneFormatter({ hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date());
+}
+
+// Live clock — updates every second
+function startBrisbaneClock() {
+  function tick() {
+    const t = document.getElementById('brisbane-clock-time');
+    const d = document.getElementById('brisbane-clock-date');
+    if (t) t.textContent = getBrisbaneTimeStr();
+    if (d) d.textContent = getBrisbaneDateStr();
+  }
+  tick();
+  setInterval(tick, 1000);
+}
+
+// ══════════════════════════════════════════
+// AUTO-DAILY ANALYSIS SCHEDULER
+// ══════════════════════════════════════════
+function saveAutoRunSettings() {
+  const enabled = document.getElementById('auto-run-toggle')?.checked;
+  const time    = document.getElementById('auto-run-time')?.value || '08:00';
+  localStorage.setItem('bias-auto-enabled', enabled ? '1' : '0');
+  localStorage.setItem('bias-auto-time', time);
+  updateAutoRunBar();
+  showToast(enabled ? `Auto-analysis scheduled: ${time} AEST daily` : 'Auto-analysis disabled');
+}
+
+function loadAutoRunSettings() {
+  const enabled = localStorage.getItem('bias-auto-enabled') === '1';
+  const time    = localStorage.getItem('bias-auto-time') || '08:00';
+  const toggle  = document.getElementById('auto-run-toggle');
+  const timeEl  = document.getElementById('auto-run-time');
+  if (toggle) toggle.checked = enabled;
+  if (timeEl) timeEl.value   = time;
+  updateAutoRunBar();
+}
+
+function updateAutoRunBar() {
+  const enabled = document.getElementById('auto-run-toggle')?.checked;
+  const time    = document.getElementById('auto-run-time')?.value || '08:00';
+  const dot     = document.getElementById('auto-run-dot');
+  const status  = document.getElementById('auto-run-status');
+  const nextEl  = document.getElementById('next-run-text');
+  const lastEl  = document.getElementById('last-run-text');
+
+  if (dot) { dot.className = 'auto-run-dot ' + (enabled ? 'on' : ''); }
+  if (status) status.innerHTML = `Auto-analysis: <strong>${enabled ? 'Enabled' : 'Disabled'}</strong>`;
+  if (nextEl) nextEl.textContent = enabled ? `${time} AEST` : '—';
+
+  const lastRun = localStorage.getItem('bias-last-run-date');
+  if (lastEl) lastEl.textContent = lastRun
+    ? (lastRun === getBrisbaneDateKey() ? 'Today ✓' : lastRun)
+    : 'Never';
+}
+
+function checkAutoSchedule() {
+  const enabled = localStorage.getItem('bias-auto-enabled') === '1';
+  if (!enabled) return;
+
+  const scheduledTime = localStorage.getItem('bias-auto-time') || '08:00';
+  const currentTime   = getBrisbaneHHMM();
+  const todayKey      = getBrisbaneDateKey();
+  const lastRunKey    = localStorage.getItem('bias-last-run-date') || '';
+
+  // Trigger if current Brisbane time >= scheduled time AND haven't run today
+  if (currentTime >= scheduledTime && lastRunKey !== todayKey) {
+    localStorage.setItem('bias-last-run-date', todayKey);
+    updateAutoRunBar();
+    // Only auto-run if there's an API key set
+    if (getApiKey()) {
+      showToast(`⏰ Auto-analysis triggered at ${currentTime} AEST`);
+      generateAllBias();
+    } else {
+      showToast('Auto-analysis: API key required — click "API Key" to configure');
+    }
+  }
+  updateAutoRunBar();
+}
+
+// Poll every 30 seconds for auto-schedule check
+setInterval(checkAutoSchedule, 30000);
+
+// ══════════════════════════════════════════
+// TRADINGVIEW WIDGET INITIALIZER
+// ══════════════════════════════════════════
+const TV_SYMBOLS = {
+  'EURUSD':   'OANDA:EURUSD',
+  'XAUUSD':   'OANDA:XAUUSD',
+  'NAS100USD': 'OANDA:NAS100_USD'
+};
+
+let biasWidgetsInitialized = false;
+let biasAutoRefreshTimer    = null;
+let biasCountdownTimer      = null;
+
+function initBiasWidgets() {
+  if (biasWidgetsInitialized) return;
+  biasWidgetsInitialized = true;
+
+  // 1. Ticker tape
+  createTVTickerTape();
+
+  // 2. Mini charts for each symbol
+  Object.entries(TV_SYMBOLS).forEach(([sym, tvSym]) => {
+    createTVMiniChart('tv-chart-' + sym, tvSym);
+  });
+
+  // 3. Fetch live prices, then auto-generate once prices are in
+  fetchLivePrices().then(() => {
+    triggerAutoAnalysis();
+  });
+
+  setTimeout(() => lucide.createIcons(), 200);
+}
+
+// ── Auto-analysis on section open ──
+function triggerAutoAnalysis() {
+  if (!getApiKey()) {
+    // No key — show prompt banner instead of silently failing
+    showNoBiasKeyBanner();
+    return;
+  }
+
+  // Show 3-second countdown in the status bar, then run
+  let secs = 3;
+  updateCountdownStatus(secs);
+  clearInterval(biasCountdownTimer);
+  biasCountdownTimer = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(biasCountdownTimer);
+      biasCountdownTimer = null;
+      updateCountdownStatus(null);
+      generateAllBias();
+      scheduleAutoRefresh(); // start the periodic refresh
+    } else {
+      updateCountdownStatus(secs);
+    }
+  }, 1000);
+}
+
+function updateCountdownStatus(secs) {
+  const el = document.getElementById('auto-run-status');
+  if (!el) return;
+  if (secs === null) {
+    el.innerHTML = 'Auto-analysis: <strong>Running…</strong>';
+  } else {
+    el.innerHTML = `Auto-analysis: <strong>Starting in ${secs}s…</strong>`;
+  }
+}
+
+function showNoBiasKeyBanner() {
+  BIAS_SYMBOLS.forEach(sym => {
+    const tbody = document.getElementById('tbody-' + sym);
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;text-align:center;">
+      <div style="font-size:13px;color:var(--yellow);font-weight:600;margin-bottom:8px;">⚡ API Key Required for Live Bias</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Enter your Anthropic API key to enable automatic AI-powered market analysis.</div>
+      <button class="btn btn-primary btn-sm" onclick="toggleBiasSettings()">
+        <i data-lucide="key"></i> Configure API Key
+      </button>
+    </td></tr>`;
+    setTimeout(() => lucide.createIcons(), 50);
+  });
+}
+
+// ── Periodic auto-refresh (runs every N hours) ──
+function scheduleAutoRefresh() {
+  clearInterval(biasAutoRefreshTimer);
+  const hours   = parseFloat(localStorage.getItem('bias-refresh-hours') || '4');
+  const ms      = hours * 60 * 60 * 1000;
+  const nextRun = new Date(Date.now() + ms);
+  const fmt     = getBrisbaneFormatter({ hour:'2-digit', minute:'2-digit', hour12:false });
+  document.getElementById('next-run-text').textContent = `${fmt.format(nextRun)} AEST (every ${hours}h)`;
+
+  biasAutoRefreshTimer = setInterval(async () => {
+    if (!getApiKey()) return;
+    await fetchLivePrices();
+    await generateAllBias();
+    // re-schedule
+    scheduleAutoRefresh();
+  }, ms);
+}
+
+function createTVTickerTape() {
+  const container = document.getElementById('tv-ticker-tape');
+  if (!container || container.dataset.init) return;
+  container.dataset.init = '1';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tradingview-widget-container';
+  const wd = document.createElement('div');
+  wd.className = 'tradingview-widget-container__widget';
+  wrap.appendChild(wd);
+
+  const sc = document.createElement('script');
+  sc.type = 'text/javascript';
+  sc.src  = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
+  sc.async = true;
+  sc.textContent = JSON.stringify({
+    symbols: [
+      { proName: 'OANDA:EURUSD',    title: 'EUR/USD' },
+      { proName: 'OANDA:XAUUSD',    title: 'XAU/USD (Gold)' },
+      { proName: 'OANDA:NAS100_USD',title: 'US NAS 100' },
+      { proName: 'FOREXCOM:DXY',    title: 'US Dollar (DXY)' },
+      { proName: 'CBOE:VIX',        title: 'VIX' }
+    ],
+    showSymbolLogo: true,
+    colorTheme: 'dark',
+    isTransparent: true,
+    displayMode: 'adaptive',
+    locale: 'en'
+  });
+  wrap.appendChild(sc);
+  container.appendChild(wrap);
+}
+
+function createTVMiniChart(containerId, tvSymbol) {
+  const container = document.getElementById(containerId);
+  if (!container || container.dataset.init) return;
+  container.dataset.init = '1';
+
+  // Clear loading placeholder
+  container.innerHTML = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tradingview-widget-container';
+  wrap.style.cssText = 'height:100%;width:100%;';
+
+  const wd = document.createElement('div');
+  wd.className = 'tradingview-widget-container__widget';
+  wd.style.cssText = 'height:100%;width:100%;';
+  wrap.appendChild(wd);
+
+  const sc = document.createElement('script');
+  sc.type  = 'text/javascript';
+  sc.src   = 'https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js';
+  sc.async = true;
+  sc.textContent = JSON.stringify({
+    symbol:     tvSymbol,
+    width:      '100%',
+    height:     200,
+    locale:     'en',
+    dateRange:  '1D',
+    colorTheme: 'dark',
+    isTransparent: true,
+    noTimeScale:   false,
+    trendLineColor:        '#3fb950',
+    underLineColor:        'rgba(63,185,80,0.12)',
+    underLineBottomColor:  'rgba(63,185,80,0)'
+  });
+  wrap.appendChild(sc);
+  container.appendChild(wrap);
+}
+
+// ══════════════════════════════════════════
+// LIVE PRICE FETCHER
+// ══════════════════════════════════════════
+async function fetchLivePrices(only) {
+  // Returns a resolved promise when done so callers can chain .then()
+  // EURUSD — Frankfurter API (CORS-enabled, free, no key required)
+  if (!only || only === 'EURUSD') {
+    try {
+      const res  = await fetch('https://api.frankfurter.app/latest?from=EUR&to=USD', { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      const px   = data?.rates?.USD;
+      if (px) setLivePrice('EURUSD', px.toFixed(5));
+    } catch(e) { console.info('EURUSD price fetch:', e.message); }
+  }
+
+  // XAUUSD — metals.live API (free, CORS-enabled)
+  if (!only || only === 'XAUUSD') {
+    try {
+      const res  = await fetch('https://api.metals.live/v1/spot/gold', { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      // Response is an array of objects [{gold: price}] or {gold: price}
+      const px   = Array.isArray(data) ? data[0]?.gold : data?.gold || data?.price;
+      if (px) setLivePrice('XAUUSD', parseFloat(px).toFixed(2));
+    } catch(e) {
+      // Fallback: goldapi.io free endpoint
+      try {
+        const res2 = await fetch('https://data-asg.goldprice.org/GetData/USD-XAU/1', { signal: AbortSignal.timeout(5000) });
+        const d2   = await res2.json();
+        const px2  = d2?.items?.[0]?.xauPrice;
+        if (px2) setLivePrice('XAUUSD', parseFloat(px2).toFixed(2));
+      } catch(e2) { console.info('XAUUSD price fetch:', e2.message); }
+    }
+  }
+
+  // NAS100 — no reliable free CORS API; price is visible in TradingView chart
+  // We show a note in the placeholder
+}
+
+function setLivePrice(symbol, price) {
+  const input = document.getElementById('price-' + symbol);
+  const dot   = document.getElementById('live-dot-' + symbol);
+  if (input) { input.value = price; input.style.color = 'var(--green)'; }
+  if (dot)   { dot.style.display = 'inline-block'; }
+  // Reset color after 3s to show it was just updated
+  setTimeout(() => { if (input) input.style.color = ''; }, 3000);
+}
+
+// ══════════════════════════════════════════
+// BIAS ENGINE
+// ══════════════════════════════════════════
+const BIAS_SYMBOLS = ['EURUSD', 'XAUUSD', 'NAS100USD'];
+const TF_ROWS = ['1H', 'Daily', 'Weekly', 'Monthly'];
+
+// Symbol-specific chart structure knowledge per instrument
+const SYMBOL_CONTEXT = {
+  EURUSD: `
+INSTRUMENT PROFILE — EURUSD (OANDA:EURUSD)
+- Macro drivers: ECB vs Fed policy divergence, DXY (inverse correlation), CPI prints, NFP, PMI data
+- Key psychological & structural levels: 1.0200, 1.0500, 1.0600, 1.0750, 1.0900, 1.1000, 1.1200, 1.1500
+- Liquidity pools: Equal highs/lows on HTF are prime sweep targets; London & NY session opens generate displacement candles
+- Structure rules for this pair: Clean impulse-correction sequences; watch for trendline breaks off swing pivots
+- Volatility triggers: FOMC, ECB rate decisions, US/EU CPI — expect expansion candles and immediate retracement traps
+- Current regime context: Apply top-down bias — monthly trend overrides daily noise`,
+
+  XAUUSD: `
+INSTRUMENT PROFILE — XAUUSD (OANDA:XAUUSD)
+- Macro drivers: Real yields (10Y TIPS inverse), DXY (inverse), geopolitical risk premium, central bank accumulation
+- Key psychological & structural levels: 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2800, 3000, 3100, 3200, 3500
+- Liquidity pools: Buy-side liquidity above prior ATHs; sell-side below major weekly lows and equal lows
+- Structure rules: Gold makes strong impulsive moves followed by tight consolidations — BOS on daily = high-conviction entry zone
+- Volatility triggers: FOMC decisions, geopolitical escalation, DXY breakdowns — Gold moves fast and traps late entrants
+- Volume & momentum: Expansion above prior day high signals institutional accumulation; contraction = pending breakout`,
+
+  NAS100USD: `
+INSTRUMENT PROFILE — NAS100USD (OANDA:NAS100_USD — US NAS 100)
+- Macro drivers: Fed rate expectations, NVDA/MSFT/AAPL/META/GOOGL/AMZN earnings, AI sector momentum, VIX (inverse)
+- Key psychological & structural levels: 17000, 18000, 19000, 20000, 21000, 22000, 23000, 24000, 25000
+- Liquidity pools: Prior day high/low are daily sweep targets; equal highs on HTF = prime BSL raid zones
+- Structure rules: NAS100 moves in clean 3-wave corrections followed by strong impulse legs; gap fills are common
+- Volatility triggers: CPI/FOMC prints, big-tech earnings — 300-500pt candles; fade the wick traps
+- Regime context: Risk-on = NAS leads SPX; risk-off = NAS leads down; VIX above 20 compresses bullish setups`
+};
+
+function toggleBiasSettings() {
+  const card = document.getElementById('bias-settings-card');
+  card.style.display = card.style.display === 'none' ? 'block' : 'none';
+  setTimeout(() => lucide.createIcons(), 30);
+}
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById('bias-api-key');
+  const icon  = document.getElementById('eye-icon');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.setAttribute('data-lucide', 'eye-off');
+  } else {
+    input.type = 'password';
+    icon.setAttribute('data-lucide', 'eye');
+  }
+  lucide.createIcons();
+}
+
+function saveApiKey() {
+  const key = document.getElementById('bias-api-key').value.trim();
+  if (!key) { showToast('Please enter an API key'); return; }
+  localStorage.setItem('anthropic-api-key', key);
+  showToast('API key saved! Auto-analysis will start shortly.');
+  toggleBiasSettings();
+  // If bias section is currently active, trigger analysis now
+  if (document.getElementById('sec-bias')?.classList.contains('active')) {
+    setTimeout(() => triggerAutoAnalysis(), 500);
+  }
+}
+
+function saveRefreshInterval() {
+  const hrs = document.getElementById('bias-refresh-hours')?.value || '4';
+  localStorage.setItem('bias-refresh-hours', hrs);
+  showToast(`Auto-refresh set to every ${hrs} hour${hrs === '1' ? '' : 's'}`);
+  scheduleAutoRefresh(); // restart timer with new interval
+}
+
+function loadRefreshInterval() {
+  const hrs = localStorage.getItem('bias-refresh-hours') || '4';
+  const sel = document.getElementById('bias-refresh-hours');
+  if (sel) sel.value = hrs;
+}
+
+function loadApiKey() {
+  const key = localStorage.getItem('anthropic-api-key');
+  if (key) document.getElementById('bias-api-key').value = key;
+}
+
+function getApiKey() {
+  return document.getElementById('bias-api-key').value.trim()
+    || localStorage.getItem('anthropic-api-key') || '';
+}
+
+function getModel() {
+  return document.getElementById('bias-model')?.value || 'claude-sonnet-4-6';
+}
+
+// ── Generate all three symbols sequentially ──
+async function generateAllBias() {
+  const btn = document.getElementById('gen-all-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader"></i> Analyzing...';
+  lucide.createIcons();
+
+  for (const sym of BIAS_SYMBOLS) {
+    await generateSymbolBias(sym);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i data-lucide="brain"></i> Generate All';
+  lucide.createIcons();
+}
+
+// ── Generate bias for one symbol ──
+async function generateSymbolBias(symbol) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    toggleBiasSettings();
+    showToast('Enter your Anthropic API key first');
+    return;
+  }
+
+  const btn = document.getElementById('btn-' + symbol);
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader"></i>';
+    lucide.createIcons();
+  }
+
+  setBiasLoading(symbol, true);
+
+  const price   = document.getElementById('price-' + symbol)?.value?.trim() || 'not provided';
+  const context = document.getElementById('ctx-' + symbol)?.value?.trim()   || 'none';
+  const model   = getModel();
+  const today   = new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
+  const prompt = buildBiasPrompt(symbol, price, context, today);
+
+  try {
+    const response = await callAnthropicAPI(apiKey, model, prompt);
+    const data     = parseBiasResponse(response, symbol);
+    renderBiasResult(symbol, data);
+  } catch (err) {
+    setBiasError(symbol, err.message);
+    console.error('Bias engine error:', err);
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="zap"></i> Analyze';
+    lucide.createIcons();
+  }
+}
+
+// ── Build the analysis prompt ──
+function buildBiasPrompt(symbol, price, context, date) {
+  const brisbaneTime = getBrisbaneTimeStr();
+  const brisbaneDate = getBrisbaneDateStr();
+
+  return `You are an advanced market-structure analyst with deep expertise in reading live price action from TradingView charts.
+
+Analyse the following OANDA instrument using the most recent available price action and market structure data:
+
+INSTRUMENT: ${symbol} (OANDA ticker)
+CURRENT PRICE: ${price}
+ANALYSIS DATE: ${date}
+BRISBANE TIME (AEST): ${brisbaneTime} — ${brisbaneDate}
+TRADER CONTEXT / CHART NOTES: ${context || 'None provided'}
+
+${SYMBOL_CONTEXT[symbol] || ''}
+
+═══════════════════════════════════════════════════════
+ANALYSIS FRAMEWORK — apply ALL of the following rules:
+═══════════════════════════════════════════════════════
+
+1. CANDLE STRUCTURE (most recent candles on each TF)
+   — Are candles closing bullish or bearish with conviction?
+   — Identify wicks: upper wicks = selling pressure; lower wicks = buying absorption
+   — Flag any engulfing, pin bar, or rejection candles at key levels
+
+2. HIGHER HIGHS / HIGHER LOWS vs LOWER HIGHS / LOWER LOWS
+   — Map the last 3–5 significant swing points on each timeframe
+   — HH + HL sequence = bullish market structure
+   — LH + LL sequence = bearish market structure
+   — Mixed or ranging = NEUTRAL
+
+3. TRENDLINE & STRUCTURE BREAKS
+   — Identify the most recent Break of Structure (BOS) — confirms trend continuation
+   — Identify any Change of Character (CHoCH) — signals potential reversal
+   — Note if price is above or below key diagonal trendlines
+
+4. SUPPORT & RESISTANCE / ORDER BLOCKS
+   — Identify the most relevant S/R zone for each timeframe
+   — Mark any unmitigated order blocks (last up-candle before a bearish move / last down-candle before a bullish move)
+   — Flag Fair Value Gaps (FVG) if price is trading inside one
+
+5. MOMENTUM SHIFTS
+   — Is momentum accelerating (expanding range candles) or decelerating (inside bars, doji clusters)?
+   — Any divergence between price and momentum?
+   — Is volume/volatility expanding or compressing into key levels?
+
+6. LIQUIDITY SWEEPS
+   — Has price recently swept buy-side liquidity (BSL) above prior swing highs?
+   — Has price recently swept sell-side liquidity (SSL) below prior swing lows?
+   — Post-sweep: did price reverse strongly? If yes, this confirms the sweep and biases toward the opposite direction
+
+7. VOLATILITY EXPANSION / COMPRESSION
+   — Is the current range expanding (breakout mode) or compressing (consolidation)?
+   — ATR expanding = trend mode; ATR contracting = pending breakout — bias neutral until break
+
+8. TOP-DOWN CONFLUENCE
+   — Monthly bias frames Weekly; Weekly frames Daily; Daily frames 1H
+   — Only assign HIGH confidence when 3+ timeframes align
+   — Conflicting HTF vs LTF = NEUTRAL or LOW confidence
+
+═══════════════════════════════════════════════════════
+OUTPUT REQUIREMENTS
+═══════════════════════════════════════════════════════
+
+Respond with ONLY a valid JSON object. No markdown. No code fences. No text outside the JSON.
+
+{
+  "symbol": "${symbol}",
+  "overall_bias": "BULLISH",
+  "overall_note": "3-sentence synthesis: (1) dominant HTF trend, (2) most important structural level to watch, (3) key risk or catalyst that could invalidate the bias",
+  "last_updated": "${brisbaneDate} ${brisbaneTime} AEST",
+  "timeframes": {
+    "1H": {
+      "bias": "BULLISH",
+      "confidence": "HIGH",
+      "key_level": "specific price",
+      "structure": "Uptrend",
+      "explanation": "2-3 sentences referencing specific market structure: name the swing points, BOS/CHoCH, liquidity sweep if present, and momentum condition. Be specific, not generic."
+    },
+    "Daily": {
+      "bias": "BEARISH",
+      "confidence": "MEDIUM",
+      "key_level": "specific price",
+      "structure": "Distribution",
+      "explanation": "2-3 sentences. Reference the last BOS or CHoCH, which S/R or order block is controlling price, and whether momentum is with or against the trend."
+    },
+    "Weekly": {
+      "bias": "NEUTRAL",
+      "confidence": "LOW",
+      "key_level": "specific price",
+      "structure": "Consolidation",
+      "explanation": "2-3 sentences. Describe the macro swing structure, where buy/sell-side liquidity sits, and what a weekly close above/below would confirm."
+    },
+    "Monthly": {
+      "bias": "BULLISH",
+      "confidence": "HIGH",
+      "key_level": "specific price",
+      "structure": "Accumulation",
+      "explanation": "2-3 sentences. Describe the long-term trend context, major macro S/R, and the dominant institutional bias based on multi-year structure."
+    }
+  }
+}
+
+Valid bias values: BULLISH, BEARISH, NEUTRAL
+Valid confidence values: HIGH, MEDIUM, LOW
+Valid structure values: Uptrend, Downtrend, Consolidation, Breakout, Breakdown, Distribution, Accumulation, Range, Liquidity Sweep, Reversal`;
+}
+
+// ── Call Anthropic API ──
+async function callAnthropicAPI(apiKey, model, prompt) {
+  if (location.protocol === 'file:') {
+    throw new Error('Open via launch.bat (localhost) or install as PWA — file:// blocks API calls');
+  }
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':       'application/json',
+      'x-api-key':          apiKey,
+      'anthropic-version':  '2023-06-01',
+      'anthropic-dangerous-client-side-api-key-flag': 'true'
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1800,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || `HTTP ${res.status}`;
+    if (res.status === 401) throw new Error('Invalid API key — check your key in settings');
+    if (res.status === 429) throw new Error('Rate limited — wait a moment and try again');
+    throw new Error(msg);
+  }
+
+  const json = await res.json();
+  return json.content?.[0]?.text || '';
+}
+
+// ── Parse AI JSON response ──
+function parseBiasResponse(text, symbol) {
+  // Strip any accidental markdown fences
+  let clean = text.trim()
+    .replace(/^```(?:json)?/i, '').replace(/```$/, '')
+    .trim();
+
+  // Extract first JSON object if there's surrounding text
+  const match = clean.match(/\{[\s\S]*\}/);
+  if (match) clean = match[0];
+
+  try {
+    return JSON.parse(clean);
+  } catch (e) {
+    throw new Error('Could not parse AI response as JSON. Raw: ' + text.substring(0, 200));
+  }
+}
+
+// ── Render results into the bias table ──
+function renderBiasResult(symbol, data) {
+  const tbody = document.getElementById('tbody-' + symbol);
+  if (!tbody || !data?.timeframes) return;
+
+  const tfs = ['1H', 'Daily', 'Weekly', 'Monthly'];
+  tbody.innerHTML = '';
+
+  tfs.forEach(tf => {
+    const tf_data = data.timeframes[tf] || {};
+    const bias     = (tf_data.bias || 'NEUTRAL').toUpperCase();
+    const conf     = (tf_data.confidence || 'LOW').toUpperCase();
+    const level    = tf_data.key_level || '—';
+    const struct   = tf_data.structure || '—';
+    const explain  = tf_data.explanation || '—';
+
+    const biasCls = bias === 'BULLISH' ? 'bull' : bias === 'BEARISH' ? 'bear' : 'neut';
+    const biasIcon = bias === 'BULLISH' ? '▲' : bias === 'BEARISH' ? '▼' : '◆';
+    const confCls  = conf === 'HIGH' ? 'conf-high' : conf === 'MEDIUM' ? 'conf-medium' : 'conf-low';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="bias-tf-label">${tf}</td>
+      <td><span class="bias-badge ${biasCls}">${biasIcon} ${bias}</span></td>
+      <td><span class="conf-pill ${confCls}">${conf}</span></td>
+      <td class="bias-key-level">${level}</td>
+      <td><span class="bias-structure-tag">${struct}</span></td>
+      <td class="bias-explanation">${explain}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  // Update overall pill
+  const overall    = (data.overall_bias || 'NEUTRAL').toUpperCase();
+  const overallCls = overall === 'BULLISH' ? 'bull' : overall === 'BEARISH' ? 'bear' : 'neut';
+  const overallIcon= overall === 'BULLISH' ? '▲' : overall === 'BEARISH' ? '▼' : '◆';
+  const pillEl     = document.getElementById('overall-' + symbol);
+  if (pillEl) {
+    pillEl.className  = 'bias-overall-pill ' + overallCls;
+    pillEl.innerHTML  = `${overallIcon} ${overall}`;
+  }
+
+  // Update alignment meter (4 segments = 4 timeframes)
+  tfs.forEach((tf, i) => {
+    const seg   = document.getElementById(`align-${symbol}-${i + 1}`);
+    const b     = (data.timeframes[tf]?.bias || '').toUpperCase();
+    const cls   = b === 'BULLISH' ? 'bull' : b === 'BEARISH' ? 'bear' : 'neut';
+    if (seg) { seg.className = 'alignment-seg ' + cls; }
+  });
+
+  // Show overall note + timestamp
+  const noteEl    = document.getElementById('note-' + symbol);
+  const noteTxtEl = document.getElementById('note-text-' + symbol);
+  if (noteEl && noteTxtEl && data.overall_note) {
+    const ts = data.last_updated ? `<div style="font-size:10px;color:var(--text3);margin-bottom:6px;font-family:'Courier New',monospace;">⏱ ${data.last_updated}</div>` : '';
+    noteTxtEl.innerHTML = ts + data.overall_note;
+    noteEl.style.display = 'block';
+  }
+}
+
+// ── Loading skeleton state ──
+function setBiasLoading(symbol, loading) {
+  const tbody = document.getElementById('tbody-' + symbol);
+  if (!tbody) return;
+
+  const noteEl = document.getElementById('note-' + symbol);
+  if (noteEl) noteEl.style.display = 'none';
+
+  if (loading) {
+    const pillEl = document.getElementById('overall-' + symbol);
+    if (pillEl) { pillEl.className = 'bias-overall-pill idle'; pillEl.innerHTML = '<i data-lucide="loader"></i> Analyzing...'; lucide.createIcons(); }
+
+    tbody.innerHTML = TF_ROWS.map(tf => `
+      <tr>
+        <td class="bias-tf-label">${tf}</td>
+        <td><span class="skel skel-sm"></span></td>
+        <td><span class="skel skel-sm"></span></td>
+        <td><span class="skel skel-sm"></span></td>
+        <td><span class="skel skel-sm"></span></td>
+        <td><span class="skel skel-lg"></span><span class="skel skel-lg" style="width:70%;margin-top:4px;"></span></td>
+      </tr>`).join('');
+  }
+}
+
+// ── Error state ──
+function setBiasError(symbol, message) {
+  const tbody = document.getElementById('tbody-' + symbol);
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--red);font-size:12px;">
+    <i data-lucide="alert-circle" style="width:14px;height:14px;vertical-align:middle;margin-right:6px;"></i>
+    Error: ${message}
+    ${message.includes('API key') ? '<br><br><button class="btn btn-sm btn-primary" onclick="toggleBiasSettings()" style="margin-top:8px;">Configure API Key</button>' : ''}
+    ${message.includes('CORS') || message.includes('fetch') ? '<br><small style="color:var(--text3);margin-top:6px;display:block;">Tip: If you see a CORS error, try opening this file via a local server (e.g. VS Code Live Server) instead of directly from the filesystem.</small>' : ''}
+  </td></tr>`;
+  setTimeout(() => lucide.createIcons(), 30);
+
+  const pillEl = document.getElementById('overall-' + symbol);
+  if (pillEl) { pillEl.className = 'bias-overall-pill idle'; pillEl.innerHTML = '✗ Error'; }
+}
+
+// ══════════════════════════════════════════
+// MT5 CSV IMPORT
+// ══════════════════════════════════════════
+let mt5ParsedTrades = [];
+
+function openMT5Modal() {
+  document.getElementById('mt5-modal').classList.add('open');
+  setTimeout(() => lucide.createIcons(), 50);
+}
+
+function closeMT5Modal() {
+  document.getElementById('mt5-modal').classList.remove('open');
+}
+
+function handleModalBackdrop(e) {
+  if (e.target === document.getElementById('mt5-modal')) closeMT5Modal();
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('mt5-drop-zone').classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  document.getElementById('mt5-drop-zone').classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('mt5-drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processMT5File(file);
+}
+
+function handleMT5FileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processMT5File(file);
+}
+
+function processMT5File(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const result = parseMT5CSV(e.target.result);
+      mt5ParsedTrades = result.trades;
+      displayMT5Preview(result);
+    } catch (err) {
+      showToast('Parse error: ' + err.message);
+      document.getElementById('mt5-footer-msg').textContent = 'Error: ' + err.message;
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ── CSV PARSER ──────────────────────────────
+function parseCSVLine(line, delimiter) {
+  if (delimiter !== ',') return line.split(delimiter);
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') { inQ = !inQ; }
+    else if (line[i] === delimiter && !inQ) { result.push(cur); cur = ''; }
+    else { cur += line[i]; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseMT5CSV(raw) {
+  // Strip BOM and leading whitespace/empty lines
+  raw = raw.replace(/^\uFEFF/, '').trimStart();
+  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) throw new Error('File is empty or has no data rows');
+
+  // Auto-detect delimiter
+  const sample = lines[0];
+  const delimiter = sample.split('\t').length > sample.split(',').length ? '\t' : ',';
+
+  // Parse header — deduplicate repeated column names (e.g. MT5 Positions has Time×2, Price×2)
+  const rawHeaders = lines[0].split(delimiter).map(h => h.trim().replace(/['"]/g, '').toLowerCase());
+  const headers = [];
+  const seen = {};
+  rawHeaders.forEach(h => {
+    const key = h.replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    if (seen[key] !== undefined) {
+      seen[key]++;
+      headers.push(key + '_' + seen[key]);
+    } else {
+      seen[key] = 0;
+      headers.push(key);
+    }
+  });
+
+  // Parse data rows into objects
+  const rows = lines.slice(1).map(line => {
+    const vals = parseCSVLine(line, delimiter);
+    const obj = {};
+    headers.forEach((h, i) => {
+      obj[h] = (vals[i] || '').trim().replace(/^["']|["']$/g, '');
+    });
+    return obj;
+  }).filter(r => Object.values(r).some(v => v.trim()));
+
+  // Detect format by checking headers
+  const hasDirection = headers.includes('direction');
+  const hasDeal      = headers.includes('deal');
+  const hasPosition  = headers.includes('position');
+
+  if (hasDirection || hasDeal) {
+    const trades = parseDealsFormat(rows);
+    return { trades, format: 'Deals', delimiter, rowCount: rows.length };
+  } else {
+    const trades = parsePositionsFormat(rows, headers);
+    return { trades, format: 'Positions', delimiter, rowCount: rows.length };
+  }
+}
+
+// ── FORMAT: DEALS ───────────────────────────
+// MT5 Deals tab export. Each trade has an "in" deal (entry) and an "out" deal (exit).
+// They share a Position ID. We pair them here.
+function parseDealsFormat(rows) {
+  // Filter to real trade deals only (exclude balance, credit, etc.)
+  const tradeDeal = rows.filter(r => {
+    const t = (r['type'] || '').toLowerCase();
+    const d = (r['direction'] || '').toLowerCase();
+    return (t === 'buy' || t === 'sell') && (d === 'in' || d === 'out' || d === 'in/out');
+  });
+
+  // Group by Position ID
+  const posMap = {};
+  tradeDeal.forEach(deal => {
+    const posId = r(deal, 'position') || r(deal, 'order') || r(deal, 'deal');
+    if (!posId) return;
+    if (!posMap[posId]) posMap[posId] = { ins: [], outs: [] };
+    const dir = (r(deal, 'direction') || '').toLowerCase();
+    if (dir === 'out') posMap[posId].outs.push(deal);
+    else posMap[posId].ins.push(deal);  // 'in' and 'in/out'
+  });
+
+  const trades = [];
+  Object.entries(posMap).forEach(([posId, pos]) => {
+    const entryDeal = pos.ins[0];
+    const exitDeal  = pos.outs[pos.outs.length - 1]; // last exit deal
+    if (!entryDeal) return;
+
+    const symbol    = r(entryDeal, 'symbol') || '—';
+    const tradeType = (r(entryDeal, 'type') || '').toLowerCase();
+    const direction = tradeType === 'buy' ? 'LONG' : 'SHORT';
+    const entryTime = r(entryDeal, 'time') || '';
+    const entryPx   = parseF(r(entryDeal, 'price'));
+    const volume    = parseF(r(entryDeal, 'volume'));
+    const entryCom  = parseF(r(entryDeal, 'commission'));
+
+    let exitTime = '', exitPx = 0, profitRaw = 0, exitCom = 0, swap = 0;
+    if (exitDeal) {
+      exitTime   = r(exitDeal, 'time') || '';
+      exitPx     = parseF(r(exitDeal, 'price'));
+      profitRaw  = parseF(r(exitDeal, 'profit'));
+      exitCom    = parseF(r(exitDeal, 'commission'));
+      swap       = parseF(r(exitDeal, 'swap'));
+    }
+
+    const totalCom = entryCom + exitCom;
+    const netPnl   = profitRaw + totalCom + swap;
+
+    trades.push({
+      posId, symbol, direction,
+      entryTime, entryPrice: entryPx,
+      exitTime,  exitPrice: exitPx,
+      volume, lot: volume,
+      pnl: profitRaw, commission: totalCom, swap,
+      netPnl, status: exitDeal ? 'Closed' : 'Open'
+    });
+  });
+
+  return trades.sort((a, b) => a.entryTime.localeCompare(b.entryTime));
+}
+
+// ── FORMAT: POSITIONS / STATEMENT ───────────
+// MT5 Account History / Statement where each row IS a completed round-trip trade.
+// Duplicate columns (Time, Price) become time_1, price_1 after dedup.
+function parsePositionsFormat(rows, headers) {
+  return rows.map((row, idx) => {
+    const symbol = r(row, 'symbol') || '';
+    if (!symbol) return null;
+
+    const tradeType = (r(row, 'type') || '').toLowerCase();
+    const direction = tradeType === 'buy' ? 'LONG' : tradeType === 'sell' ? 'SHORT' : tradeType.toUpperCase();
+
+    // Duplicate cols: first "time" = entry, second = "time_1"; same for "price"
+    const entryTime  = r(row, 'time')    || '';
+    const exitTime   = r(row, 'time_1')  || r(row, 'time_2') || '';
+    const entryPx    = parseF(r(row, 'price'));
+    const exitPx     = parseF(r(row, 'price_1') || r(row, 'price_2'));
+    const volume     = parseF(r(row, 'volume'));
+    const profitRaw  = parseF(r(row, 'profit'));
+    const commission = parseF(r(row, 'commission'));
+    const swap       = parseF(r(row, 'swap'));
+    const netPnl     = profitRaw + commission + swap;
+
+    return {
+      posId: r(row, 'position') || r(row, 'deal') || (idx + 1),
+      symbol, direction,
+      entryTime, entryPrice: entryPx,
+      exitTime,  exitPrice: exitPx,
+      volume, lot: volume,
+      pnl: profitRaw, commission, swap,
+      netPnl, status: exitTime ? 'Closed' : 'Open'
+    };
+  }).filter(Boolean);
+}
+
+// ── HELPERS ─────────────────────────────────
+// Safe field reader — tries exact key then partial match
+function r(obj, key) {
+  if (obj[key] !== undefined) return obj[key];
+  const k = key.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  for (const [ok, ov] of Object.entries(obj)) {
+    if (ok.startsWith(k) || ok === k) return ov;
+  }
+  return '';
+}
+function parseF(v) { const n = parseFloat(String(v).replace(/\s/g,'')); return isNaN(n) ? 0 : n; }
+function fmt2(n)   { return n.toFixed(2); }
+function fmtTime(t) {
+  if (!t) return '';
+  // MT5 format: "2024.01.15 09:30:00" → convert to HH:MM
+  const m = t.match(/(\d{2}):(\d{2})/);
+  return m ? m[1] + ':' + m[2] : t;
+}
+function fmtDate(t) {
+  if (!t) return '';
+  // MT5: "2024.01.15 09:30:00"
+  const m = t.match(/^(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : t.split(' ')[0];
+}
+
+// ── PREVIEW ─────────────────────────────────
+function displayMT5Preview(result) {
+  const { trades, format, rowCount } = result;
+
+  // Show format info
+  const infoEl  = document.getElementById('mt5-format-info');
+  const badgeEl = document.getElementById('mt5-format-badge');
+  const descEl  = document.getElementById('mt5-format-desc');
+  infoEl.classList.add('visible');
+  badgeEl.innerHTML = `<i data-lucide="file-text"></i> ${format} Format Detected`;
+  descEl.textContent = `Parsed ${rowCount} raw rows → found ${trades.length} trade${trades.length !== 1 ? 's' : ''}. `
+    + (format === 'Deals'
+        ? 'Entry and exit deals have been paired by Position ID.'
+        : 'Each row represents one completed position.');
+
+  // Summary stats
+  let wins = 0, losses = 0, totalNet = 0;
+  trades.forEach(t => {
+    if (t.netPnl > 0) wins++;
+    else if (t.netPnl < 0) losses++;
+    totalNet += t.netPnl;
+  });
+  document.getElementById('mt5-stat-total').textContent  = trades.length;
+  document.getElementById('mt5-stat-wins').textContent   = wins;
+  document.getElementById('mt5-stat-losses').textContent = losses;
+  const pnlEl = document.getElementById('mt5-stat-pnl');
+  pnlEl.textContent  = (totalNet >= 0 ? '+' : '') + '$' + Math.abs(totalNet).toFixed(2);
+  pnlEl.className    = 'import-stat-val ' + (totalNet >= 0 ? 'green' : 'red');
+  document.getElementById('mt5-import-stats').classList.add('visible');
+
+  // Preview table
+  const tbody = document.getElementById('mt5-preview-body');
+  tbody.innerHTML = '';
+  trades.forEach((t, i) => {
+    const pnlColor = t.netPnl > 0 ? 'var(--green)' : t.netPnl < 0 ? 'var(--red)' : 'var(--text2)';
+    const dirBadge = t.direction === 'LONG'
+      ? '<span class="badge badge-green">▲ LONG</span>'
+      : '<span class="badge badge-red">▼ SHORT</span>';
+    const openCls  = t.status === 'Open' ? 'import-row-open' : '';
+    const tr = document.createElement('tr');
+    tr.className = openCls;
+    tr.innerHTML = `
+      <td style="color:var(--text3)">${i + 1}</td>
+      <td style="font-weight:600">${t.symbol}</td>
+      <td>${dirBadge}</td>
+      <td style="white-space:nowrap;font-size:11px">${t.entryTime}</td>
+      <td>${t.entryPrice || '—'}</td>
+      <td style="white-space:nowrap;font-size:11px">${t.exitTime || '<em style="color:var(--text3)">open</em>'}</td>
+      <td>${t.exitPrice || '—'}</td>
+      <td>${t.lot}</td>
+      <td style="color:var(--text2)">${fmt2(t.commission)}</td>
+      <td style="color:var(--text2)">${fmt2(t.swap)}</td>
+      <td>${fmt2(t.pnl)}</td>
+      <td style="font-weight:700;color:${pnlColor}">${fmt2(t.netPnl)}</td>
+      <td><span class="badge ${t.status === 'Closed' ? 'badge-blue' : 'badge-yellow'}">${t.status}</span></td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('mt5-preview').classList.add('visible');
+  document.getElementById('mt5-preview-count').textContent = trades.length + ' trades';
+  document.getElementById('mt5-footer-msg').textContent =
+    `Ready to import ${trades.length} trade${trades.length !== 1 ? 's' : ''} into your Daily Journal trade log`;
+
+  // Enable import button
+  const btn = document.getElementById('mt5-import-btn');
+  if (trades.length > 0) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor  = 'pointer';
+    btn.innerHTML     = `<i data-lucide="check"></i> Import ${trades.length} Trades`;
+  }
+
+  setTimeout(() => lucide.createIcons(), 50);
+}
+
+// ── IMPORT INTO TRADE LOG ───────────────────
+function importMT5Trades() {
+  if (!mt5ParsedTrades.length) return;
+
+  // Navigate to Daily Journal
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector('[data-section="daily"]').classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-daily').classList.add('active');
+  document.getElementById('topbar-title').textContent = 'Daily Journal';
+
+  mt5ParsedTrades.forEach(trade => addTradeFromMT5(trade));
+
+  updateStats();
+  syncGradeMatrix();
+  closeMT5Modal();
+
+  // Reset for next import
+  mt5ParsedTrades = [];
+  document.getElementById('mt5-file-input').value = '';
+  document.getElementById('mt5-format-info').classList.remove('visible');
+  document.getElementById('mt5-import-stats').classList.remove('visible');
+  document.getElementById('mt5-preview').classList.remove('visible');
+  const btn = document.getElementById('mt5-import-btn');
+  btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
+  btn.innerHTML = '<i data-lucide="check"></i> Import Trades';
+  document.getElementById('mt5-footer-msg').textContent = 'Select a file to begin import';
+
+  showToast(`Imported ${mt5ParsedTrades.length || '—'} trades from MT5`);
+  setTimeout(() => lucide.createIcons(), 50);
+}
+
+function addTradeFromMT5(trade) {
+  tradeCount++;
+  const n = tradeCount;
+  const container = document.getElementById('trade-log-container');
+  const card = document.createElement('div');
+  card.className = 'trade-card';
+  card.id = 'trade-' + n;
+
+  const dirLabel = trade.direction === 'LONG' ? 'Long' : 'Short';
+  const notes = [
+    trade.commission  ? `Commission: $${fmt2(trade.commission)}` : '',
+    trade.swap        ? `Swap: $${fmt2(trade.swap)}` : '',
+    trade.posId       ? `MT5 Position ID: ${trade.posId}` : '',
+    trade.status === 'Open' ? '⚠ Open position — no exit price yet' : ''
+  ].filter(Boolean).join(' | ');
+
+  card.innerHTML = `
+    <div class="trade-card-header">
+      <span class="trade-card-num">TRADE #${n} <span style="margin-left:6px;font-size:10px;background:rgba(88,166,255,0.15);color:var(--blue);padding:1px 7px;border-radius:10px;font-weight:600;">MT5</span></span>
+      <button class="remove-btn" onclick="removeTrade(${n})"><i data-lucide="x"></i></button>
+    </div>
+    <div class="form-row cols-4">
+      <div class="form-group">
+        <label>Ticker / Symbol</label>
+        <input type="text" class="trade-ticker" value="${trade.symbol}" oninput="syncGradeMatrix()">
+      </div>
+      <div class="form-group">
+        <label>Direction</label>
+        <select class="trade-dir">
+          <option ${dirLabel === 'Long'  ? 'selected' : ''}>Long</option>
+          <option ${dirLabel === 'Short' ? 'selected' : ''}>Short</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Setup Type</label>
+        <input type="text" class="trade-setup" placeholder="Bull Flag, ORB, VWAP...">
+      </div>
+      <div class="form-group">
+        <label>Grade</label>
+        <select class="trade-grade">
+          <option value="">— Grade —</option>
+          <option>A+</option><option>A</option><option>B</option><option>C</option><option>D</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row cols-4">
+      <div class="form-group">
+        <label>Entry Price</label>
+        <input type="number" class="trade-entry" value="${trade.entryPrice || ''}" step="0.00001" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Exit Price</label>
+        <input type="number" class="trade-exit" value="${trade.exitPrice || ''}" step="0.00001" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Lot / Volume</label>
+        <input type="number" class="trade-qty" value="${trade.lot || ''}" step="0.01" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Stop Loss</label>
+        <input type="number" class="trade-stop" placeholder="0.00" step="0.00001">
+      </div>
+    </div>
+    <div class="form-row cols-4">
+      <div class="form-group">
+        <label>Net P&amp;L ($)</label>
+        <input type="number" class="trade-pnl" value="${fmt2(trade.netPnl)}" step="0.01" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>R-Multiple</label>
+        <input type="number" class="trade-r" placeholder="0.0" step="0.1" oninput="updateStats()">
+      </div>
+      <div class="form-group">
+        <label>Time In</label>
+        <input type="time" class="trade-time-in" value="${fmtTime(trade.entryTime)}">
+      </div>
+      <div class="form-group">
+        <label>Time Out</label>
+        <input type="time" class="trade-time-out" value="${fmtTime(trade.exitTime)}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Trade Notes (MT5 auto-imported)</label>
+      <input type="text" class="trade-notes" value="${notes}" placeholder="Add your analysis, what you saw, what you learned...">
+    </div>`;
+
+  container.appendChild(card);
+  setTimeout(() => lucide.createIcons(), 30);
+}
+
+// ══════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════
+// PASSWORD SETUP (first-time on new device)
+// ══════════════════════════════════════════
+function hashPassword(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+
+function showPasswordSetup() {
+  const overlay = document.createElement('div');
+  overlay.id = 'pass-setup';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:99999;background:rgba(1,4,9,0.95);
+    display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;
+  `;
+  overlay.innerHTML = `
+    <div style="background:#161b22;border:1px solid #30363d;border-radius:16px;padding:40px;width:380px;max-width:92vw;text-align:center;">
+      <div style="width:52px;height:52px;background:linear-gradient(135deg,#3fb950,#2ea043);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+        <svg width="24" height="24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div style="font-size:20px;font-weight:800;color:#e6edf3;margin-bottom:6px;">Set Your Password</div>
+      <div style="font-size:13px;color:#8b949e;margin-bottom:24px;">Create a password to protect your Trading Journal.<br>You'll need this on every device you log in from.</div>
+      <input type="password" id="setup-pass1" placeholder="Create password"
+        style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:14px;padding:11px 14px;outline:none;font-family:inherit;margin-bottom:10px;"
+        oninput="checkSetupMatch()">
+      <input type="password" id="setup-pass2" placeholder="Confirm password"
+        style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:14px;padding:11px 14px;outline:none;font-family:inherit;margin-bottom:16px;"
+        oninput="checkSetupMatch()" onkeydown="if(event.key==='Enter')saveSetupPassword()">
+      <div id="setup-match" style="font-size:12px;margin-bottom:14px;height:16px;color:#8b949e;"></div>
+      <button id="setup-save-btn" onclick="saveSetupPassword()" disabled
+        style="width:100%;background:#3fb950;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;padding:12px;cursor:pointer;font-family:inherit;opacity:0.4;">
+        Save Password &amp; Enter Journal
+      </button>
+      <div id="setup-error" style="color:#f85149;font-size:12px;margin-top:10px;display:none;"></div>
+      <div style="margin-top:18px;font-size:11px;color:#6e7681;line-height:1.6;">Password is stored locally on this device.<br>If you forget it, clear your browser data to reset.</div>
+    </div>`;
+  document.body.prepend(overlay);
+
+  window.checkSetupMatch = function() {
+    const p1 = document.getElementById('setup-pass1').value;
+    const p2 = document.getElementById('setup-pass2').value;
+    const msg = document.getElementById('setup-match');
+    const btn = document.getElementById('setup-save-btn');
+    if (!p1) { msg.textContent = ''; btn.disabled = true; btn.style.opacity = '0.4'; return; }
+    if (p1.length < 6) { msg.style.color = '#f85149'; msg.textContent = 'Password must be at least 6 characters'; btn.disabled = true; btn.style.opacity = '0.4'; return; }
+    if (p2 && p1 === p2) { msg.style.color = '#3fb950'; msg.textContent = '✓ Passwords match'; btn.disabled = false; btn.style.opacity = '1'; }
+    else if (p2) { msg.style.color = '#f85149'; msg.textContent = 'Passwords do not match'; btn.disabled = true; btn.style.opacity = '0.4'; }
+    else { msg.textContent = ''; btn.disabled = true; btn.style.opacity = '0.4'; }
+  };
+
+  window.saveSetupPassword = function() {
+    const p1 = document.getElementById('setup-pass1').value;
+    const p2 = document.getElementById('setup-pass2').value;
+    if (p1 !== p2 || p1.length < 6) return;
+    localStorage.setItem('tj_pass_hash', hashPassword(p1));
+    sessionStorage.setItem('tj_authenticated', '1');
+    document.getElementById('pass-setup').remove();
+    showToast('Password saved! You\'re now logged in.');
+  };
+}
+
+// Trigger password setup on first visit
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.__TJ_SETUP_PASS) showPasswordSetup();
+});
+
+// ══════════════════════════════════════════
+// CHANGE PASSWORD (accessible from settings)
+// ══════════════════════════════════════════
+function changePassword() {
+  localStorage.removeItem('tj_pass_hash');
+  sessionStorage.removeItem('tj_authenticated');
+  showToast('Password cleared — set a new one now');
+  setTimeout(() => showPasswordSetup(), 500);
+}
+</script>
+
+<script>
+// Register service worker for PWA install + offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
